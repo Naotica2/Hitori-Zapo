@@ -357,6 +357,18 @@ export function cleanAndroidMarkup(text) {
         .replace(/<Cit(?:e|ation|ations)\b[^>]*\/>/gi, '')
         .replace(/<Cit(?:e|ation|ations)\b[^>]*>[\s\S]*?<\/Cit(?:e|ation|ations)>/gi, '')
         .replace(/(?:\brefs=)?\{\s*\[\s*(?:["']turn\d+[^"']*["']\s*,?\s*)+\]\s*\}\s*\/?>?/gi, '')
+        .replace(
+          /<Link\b([^>]*?)\/>/gi,
+          (_, attrs) => {
+            const url = attrs.match(/\b(?:url|href)=["']([^"']+)["']/i)?.[1] || ''
+            const title = attrs.match(/\b(?:title|label|text)=["']([^"']+)["']/i)?.[1]?.trim() || ''
+            if (!url) return title
+            const normUrl = url.replace(/\/+$/, '')
+            const normTitle = title.replace(/\/+$/, '')
+            if (!title || normTitle === normUrl) return url
+            return `${title} (${url})`
+          }
+        )
         .replace(/<Link\b[^>]*\b(?:url|href)=["']([^"']+)["'][^>]*>([\s\S]*?)<\/Link>/gi, (_, url, label) => {
           const cleanLabel = String(label || '').replace(/<\/?[^>]+>/g, '').trim()
           const normUrl = url.replace(/\/+$/, '')

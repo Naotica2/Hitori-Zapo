@@ -6,6 +6,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import config from '../../config.js'
 import { LANGS, parseMarkdown } from '../../lib/highlight.js'
+import { extractTextFromMessage, getQuotedMessage } from '../../lib/media.js'
 import { extractTargetMediaInput, analyzePdf, transcribeAudio } from '../../lib/aiMultimodal.js'
 import { runToolAgent } from '../../lib/aiAgent.js'
 import {
@@ -313,11 +314,15 @@ export default {
   description: 'AI Agent ber-tool & Multimodal (Foto, Voice Note, PDF/Dokumen, Pengingat)',
 
   async run(ctx) {
-    const { cleanText: query, mode: deliveryMode, wantRichHtml } = extractDeliveryMode(ctx.text || '')
+    const { cleanText: rawQuery, mode: deliveryMode, wantRichHtml } = extractDeliveryMode(ctx.text || '')
+    const quotedText = extractTextFromMessage(getQuotedMessage(ctx)).trim()
+    const query = rawQuery
+    const memKey = `${ctx.chat || 'dm'}:${ctx.sender || 'anon'}`
 
     if (/^(reset|mulai( ulang)?|lupakan)/i.test(query)) {
+      MEM.delete(memKey)
       MEM.delete(ctx.sender)
-      return ctx.reply(`🧠 Sesi ${config.botName} AI di-reset. Mulai obrolan baru yuk!`)
+      return ctx.reply(`🧠 Sesi ${config.botName} AI di chat ini di-reset. Mulai obrolan baru yuk!`)
     }
 
     let media = null
@@ -327,7 +332,7 @@ export default {
       return ctx.reply('⚠️ ' + String(mediaErr?.message || mediaErr))
     }
 
-    if (!query && !media) {
+    if (!query && !media && !quotedText) {
       return ctx.reply(
         `🤖 *${config.botName.toUpperCase()} AI AGENT*\n\n` +
           'Mau ngobrol apa, Kak?\n\n' +
@@ -341,6 +346,7 @@ export default {
           '• Reply *Foto* + `.ai jelaskan gambar ini`\n' +
           '• Reply *Voice Note / Audio* + `.ai rangkum poin pentingnya`\n' +
           '• Reply *PDF / Dokumen Teks* + `.ai ringkas & terjemahkan`\n' +
+          '• Reply *Pesan Teks / AI* + `.ai jelaskan lebih lanjut`\n' +
           '• `.ai reset` _(mulai sesi baru)_'
       )
     }
@@ -394,11 +400,11 @@ export default {
           persona
         })
 
-        const newHist = MEM.get(ctx.sender) || []
+        const newHist = MEM.get(memKey) || []
         newHist.push({ role: 'user', content: `[PDF: ${media.fileName}] ${query || 'Ringkas PDF ini'}` })
         newHist.push({ role: 'assistant', content: (pdfRes.text || '').slice(0, 1200) })
         while (newHist.length > MEM_CAP) newHist.shift()
-        MEM.set(ctx.sender, newHist)
+        MEM.set(memKey, newHist)
 
         const pdfSubs = [
           subText(
@@ -448,7 +454,9 @@ export default {
       }
 
       const messages = [{ role: 'system', content: persona + realTimeContext() }]
-      const hist = MEM.get(ctx.sender) || []
+      // Jika user me-reply pesan tertentu (mis. pesan NaoFlix), fokuskan konteks pada pesan yang di-reply
+      // agar topik lama di MEM tidak menabrak/membajak konteks reply tersebut.
+      const hist = quotedText ? [] : (MEM.get(memKey) || [])
       messages.push(...hist)
 
       if (toolContext.length) {
@@ -458,13 +466,22 @@ export default {
         })
       }
 
+      const effectiveQuery =
+        quotedText && media?.kind !== 'audio' && media?.kind !== 'textdoc'
+          ? (query
+              ? `${query}\n\n[PESAN YANG SEDANG DI-REPLY USER — JADIKAN KONTEKS UTAMA]\n` +
+                wrapUntrustedContent('quoted_reply', quotedText, 4000)
+              : `Jelaskan, rangkum, atau tanggapi pesan berikut dalam bahasa Indonesia:\n\n` +
+                wrapUntrustedContent('quoted_reply', quotedText, 4000))
+          : query
+
       let userContent
       let modeLabel = 'Chat Mode'
       if (media?.kind === 'image') {
         modeLabel = 'Vision Mode'
         userContent = orca.visionMessage(
           media.dataUri,
-          query || 'Deskripsiin gambar atau dokumen foto ini dengan detail dan terstruktur dalam bahasa Indonesia.'
+          effectiveQuery || 'Deskripsiin gambar atau dokumen foto ini dengan detail dan terstruktur dalam bahasa Indonesia.'
         )
       } else if (media?.kind === 'audio') {
         modeLabel = `Voice Note • ${sttInfo}`
@@ -491,7 +508,7 @@ export default {
             wrapUntrustedContent(`file:${media.fileName}`, media.textContent, 8000)
         }
       } else {
-        userContent = { role: 'user', content: query }
+        userContent = { role: 'user', content: effectiveQuery }
       }
       messages.push(userContent)
 
@@ -548,18 +565,20 @@ export default {
       }
 
       const safeReplyText = redactSecrets(result.text)
-      const newHist = MEM.get(ctx.sender) || []
+      const newHist = MEM.get(memKey) || []
       const memUserLabel =
-        query ||
+        (quotedText && query ? `[Reply: ${quotedText.slice(0, 140)}] ${query}` : query) ||
         (media?.kind === 'audio'
           ? `[VN: ${audioTranscript.slice(0, 120)}]`
           : media?.kind === 'textdoc'
             ? `[Dokumen: ${media.fileName}]`
-            : '[user mengirim gambar]')
+            : quotedText
+              ? `[Reply: ${quotedText.slice(0, 140)}]`
+              : '[user mengirim gambar]')
       newHist.push({ role: 'user', content: memUserLabel })
       newHist.push({ role: 'assistant', content: safeReplyText.slice(0, 1200) })
       while (newHist.length > MEM_CAP) newHist.shift()
-      MEM.set(ctx.sender, newHist)
+      MEM.set(memKey, newHist)
 
       const submessages = [
         subText(
