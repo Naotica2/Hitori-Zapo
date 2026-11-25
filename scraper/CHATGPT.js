@@ -340,8 +340,129 @@ function assetOf(part) {
   }
 }
 
+const CODE_SPAN_RE = /(```[\s\S]*?```|`[^`\n]+`)/g
+
+/** Membersihkan tag widget Android ChatGPT (<Cite>, <Link>, <text>) di luar blok kode. */
+export function cleanAndroidMarkup(text) {
+  return String(text || '')
+    .split(CODE_SPAN_RE)
+    .map((seg, idx) => {
+      if (idx % 2 === 1) return seg
+      return seg
+        .replace(/[\uE200-\uE20F][\s\S]*?[\uE200-\uE20F]/g, '')
+        .replace(/[\uE200-\uE20F]/g, '')
+        .replace(/<Cit(?:e|ation|ations)\b[^>]*\/>/gi, '')
+        .replace(/<Cit(?:e|ation|ations)\b[^>]*>[\s\S]*?<\/Cit(?:e|ation|ations)>/gi, '')
+        .replace(/(?:\brefs=)?\{\s*\[\s*(?:["']turn\d+[^"']*["']\s*,?\s*)+\]\s*\}\s*\/?>?/gi, '')
+        .replace(/<Link\b[^>]*\b(?:url|href)=["']([^"']+)["'][^>]*>([\s\S]*?)<\/Link>/gi, (_, url, label) => {
+          const cleanLabel = String(label || '').replace(/<\/?[^>]+>/g, '').trim()
+          const normUrl = url.replace(/\/+$/, '')
+          const normLabel = cleanLabel.replace(/\/+$/, '')
+          if (!cleanLabel || normLabel === normUrl) return url
+          return `${cleanLabel} (${url})`
+        })
+        .replace(/<\/?text\b[^>]*>/gi, '')
+        .replace(/[ \t]+([.,;:!?])/g, '$1')
+        .replace(/[ \t]{2,}/g, ' ')
+    })
+    .join('')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+const normCmp = (s) =>
+  String(s || '')
+    .replace(/[*_`~#>]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+
+function splitParagraphsSafe(text) {
+  const blocks = []
+  let cur = []
+  let inFence = false
+  for (const line of String(text || '').split('\n')) {
+    if (/^\s*```/.test(line)) inFence = !inFence
+    if (!inFence && line.trim() === '') {
+      if (cur.length) {
+        blocks.push(cur.join('\n'))
+        cur = []
+      }
+    } else {
+      cur.push(line)
+    }
+  }
+  if (cur.length) blocks.push(cur.join('\n'))
+  return blocks
+}
+
+/** Menggabungkan beberapa assistant msg.id dari SSE tanpa menduplikasi draft/revisi maupun merusak blok terpisah. */
+export function mergeAssistantSegments(records) {
+  const hasFinalChannel = records.some((r) => r.channel === 'final' && r.text)
+  const visible = records.filter((r) => {
+    if (!r.text) return false
+    if (hasFinalChannel && r.channel && r.channel !== 'final') return false
+    return true
+  })
+
+  const outParas = []
+  const outNorms = []
+
+  for (const rec of visible) {
+    const cleaned = cleanAndroidMarkup(rec.text)
+    if (!cleaned) continue
+
+    const accNorm = normCmp(outParas.join('\n\n'))
+    const segNorm = normCmp(cleaned)
+    if (!segNorm) continue
+
+    // Jika pesan baru memuat ulang semua paragraf sebelumnya sebagai prefix, ganti seluruhnya
+    if (
+      accNorm &&
+      (segNorm === accNorm ||
+        (accNorm.length >= 25 && segNorm.startsWith(accNorm.slice(0, Math.floor(accNorm.length * 0.85)))))
+    ) {
+      outParas.length = 0
+      outNorms.length = 0
+      for (const p of splitParagraphsSafe(cleaned)) {
+        const np = normCmp(p)
+        if (!np) continue
+        outParas.push(p)
+        outNorms.push(np)
+      }
+      continue
+    }
+
+    // Jika pesan baru sudah termuat utuh di pesan yang ada, abaikan
+    if (segNorm.length >= 25 && accNorm.includes(segNorm)) continue
+
+    for (const p of splitParagraphsSafe(cleaned)) {
+      const np = normCmp(p)
+      if (!np) continue
+      const dupIdx = outNorms.findIndex(
+        (existing) =>
+          existing === np ||
+          (np.length >= 30 && existing.includes(np)) ||
+          (existing.length >= 30 && np.startsWith(existing)) ||
+          (np.length >= 45 && existing.length >= 45 && np.slice(0, 45) === existing.slice(0, 45))
+      )
+      if (dupIdx !== -1) {
+        if (np.length > outNorms[dupIdx].length && np.startsWith(outNorms[dupIdx].slice(0, 35))) {
+          outParas[dupIdx] = p
+          outNorms[dupIdx] = np
+        }
+        continue
+      }
+      outParas.push(p)
+      outNorms.push(np)
+    }
+  }
+
+  return outParas.join('\n\n').trim()
+}
+
 async function consumeStream(res) {
-  const texts = new Map()
+  const msgRecords = new Map()
   const order = []
   const images = []
   const seen = new Set()
@@ -365,11 +486,25 @@ async function consumeStream(res) {
     const role = msg.author?.role
     if (msg.id) lastId = msg.id
 
-    if (role === 'assistant' && Array.isArray(msg.content?.parts)) {
-      const parts = msg.content.parts.filter((p) => typeof p === 'string')
+    const ctype = msg.content?.content_type
+    const recipient = msg.recipient
+    const isUserFacingAssistant =
+      role === 'assistant' &&
+      (!recipient || recipient === 'all') &&
+      ctype !== 'thoughts' &&
+      ctype !== 'reasoning_recap'
+
+    if (isUserFacingAssistant && Array.isArray(msg.content?.parts)) {
+      const textChunk = msg.content.parts.filter((p) => typeof p === 'string').join('')
       if (msg.id) {
-        if (!texts.has(msg.id)) order.push(msg.id)
-        texts.set(msg.id, parts)
+        if (!msgRecords.has(msg.id)) order.push(msg.id)
+        const prev = msgRecords.get(msg.id)
+        msgRecords.set(msg.id, {
+          id: msg.id,
+          channel: msg.channel ?? prev?.channel ?? null,
+          endTurn: Boolean(msg.end_turn),
+          text: textChunk.length >= (prev?.text?.length ?? 0) ? textChunk : prev.text
+        })
       }
     }
 
@@ -422,13 +557,16 @@ async function consumeStream(res) {
     }
   }
 
-  const text = order.map((id) => texts.get(id).join('')).join('')
-  for (const m of text.matchAll(/https?:\/\/[^\s)\]>"']+/g)) {
+  // Ekstrak sumber URL dari teks mentah sebelum markup Link/Cite dirapikan
+  const rawCombined = order.map((id) => msgRecords.get(id)?.text || '').join('\n')
+  for (const m of rawCombined.matchAll(/https?:\/\/[^\s)\]>"']+/g)) {
     if (!srcSeen.has(m[0])) {
       srcSeen.add(m[0])
       sources.push(m[0])
     }
   }
+
+  const text = mergeAssistantSegments(order.map((id) => msgRecords.get(id)))
   return { text, images, sources, conversationId, parentMessageId: lastId, done }
 }
 
