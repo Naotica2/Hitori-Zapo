@@ -1,22 +1,35 @@
 /**
  * © Hitori-MD — WhatsApp Bot on Zapo-JS
- * ai.js — Hitori AI assistant
- * Mendukung chat, vision gate, pembaca file repo (owner), live web/search, dan rich response.
+ * ai.js — Hitori AI assistant (Smart Hybrid code/HTML delivery + file protocol)
  */
 import fs from 'node:fs'
 import path from 'node:path'
 import config from '../../config.js'
-import { LANGS, parseMarkdown, tokenize } from '../../lib/highlight.js'
+import { LANGS, parseMarkdown } from '../../lib/highlight.js'
 import { tryDownloadImageBuffer, resolveTargetMedia } from '../../lib/media.js'
-import { sendSubRich, subCode, subTable, subText } from '../../lib/aiRich.js'
+import {
+  VIEW_CODE_LIMIT,
+  SPLIT_CHUNK_LIMIT,
+  buildPreviewCodeSub,
+  deliverSmartCode,
+  extractDeliveryMode,
+  resolveCodeExt,
+  sendCodeDocument,
+  sendSubRich,
+  splitCodeChunks,
+  subCode,
+  subTable,
+  subText
+} from '../../lib/aiRich.js'
+import { sendRichHtml } from '../../lib/richHtml.js'
 
-const MAX_CODE = 12000
 const MAX_TEXT = 3500
 const MAX_CTX = 5000
 const MEM = (globalThis.HITORI_AI_MEM ??= new Map())
 const MEM_CAP = 8
 
-const isCodeRequest = (q) => /\b(kode|code|html|css|javascript|js|script|game)\b/i.test(q)
+const isCodeRequest = (q) =>
+  /\b(kode|code|html|css|javascript|js|script|game|snake|tetris|flappy|web|program|bot|plugin)\b/i.test(q)
 
 async function loadAiConfig() {
   try {
@@ -32,36 +45,15 @@ async function loadAiConfig() {
   }
 }
 
-function codeSubmessage(code, lang) {
-  let src = code
-  let truncated = false
-  if (src.length > MAX_CODE) {
-    src = src.slice(0, MAX_CODE)
-    truncated = true
-  }
-  const blocks = tokenize(src)
-  if (truncated) blocks.push({ highlightType: 5, codeContent: '\n// … (terpotong)' })
-  return {
-    messageType: 5,
-    codeMetadata: { codeLanguage: LANGS[lang] || lang || 'javascript', codeBlocks: blocks }
-  }
-}
-
-function fileSummaryTable(file) {
-  return {
-    messageType: 4,
-    tableMetadata: {
-      title: 'Ringkasan File',
-      rows: [
-        { items: ['Properti', 'Nilai'], isHeading: true },
-        { items: ['Nama', file.name], isHeading: false },
-        { items: ['Path', file.safe], isHeading: false },
-        { items: ['Bahasa', LANGS[file.ext] || file.ext], isHeading: false },
-        { items: ['Ukuran', (file.code.length / 1024).toFixed(1) + ' KB'], isHeading: false },
-        { items: ['Baris', String(file.code.split('\n').length)], isHeading: false }
-      ]
-    }
-  }
+function buildFileSummaryRows(file) {
+  return [
+    ['Properti', 'Nilai'],
+    ['Nama', file.name],
+    ['Path', file.safe],
+    ['Bahasa', LANGS[file.ext] || file.ext],
+    ['Ukuran', `${(file.code.length / 1024).toFixed(1)} KB`],
+    ['Baris', String(file.code.split('\n').length)]
+  ]
 }
 
 function formatSearch(text) {
@@ -219,8 +211,48 @@ function realTimeContext() {
   const jam = now.toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' })
   return (
     `\n\nKONTEKS WAKTU REAL-TIME: Hari ini ${hari}, ${tgl}, jam ${jam} (zona Asia/Jakarta). ` +
-    `Pakai ini kalau ditanya soal waktu, tanggal, atau kabar terbaru.`
+    'Pakai ini kalau ditanya soal waktu, tanggal, atau kabar terbaru.'
   )
+}
+
+function extractPartsWithHtmlFallback(rawText) {
+  const parts = parseMarkdown(rawText)
+  if (parts.some((p) => p.type === 'code')) return parts
+
+  const rawHtmlMatch =
+    rawText.match(/(<!doctype\s+html[\s\S]*<\/html>|<html[\s\S]*<\/html>)/i) ||
+    rawText.match(/(<!doctype\s+html[\s\S]{200,}|<html[\s\S]{200,})/i)
+
+  if (!rawHtmlMatch) return parts
+
+  const idx = rawHtmlMatch.index ?? 0
+  const htmlCode = rawHtmlMatch[1].trim()
+  const before = rawText.slice(0, idx).trim()
+  const after = rawText.slice(idx + rawHtmlMatch[0].length).trim()
+
+  const merged = []
+  if (before) merged.push({ type: 'text', text: before })
+  merged.push({ type: 'code', lang: 'html', code: htmlCode })
+  if (after) merged.push({ type: 'text', text: after })
+  return merged
+}
+
+function isFullHtmlDocument(lang, code) {
+  const ext = resolveCodeExt(lang)
+  if (ext !== 'html') return false
+  return /<!doctype\s+html|<html|<canvas|<script/i.test(code) || code.length > 800
+}
+
+function deriveCodeFileName(code, lang, query, index) {
+  const ext = resolveCodeExt(lang)
+  const titleMatch = ext === 'html' ? code.match(/<title>([^<]{1,40})<\/title>/i)?.[1] : ''
+  const rawSlug = (titleMatch || query || 'hitori-code')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 32)
+  const base = rawSlug || 'hitori-code'
+  return `${base}${index > 0 ? `-${index + 1}` : ''}.${ext}`
 }
 
 const footer = () => `\n> _*Powered by ${config.botName}*_`
@@ -232,7 +264,7 @@ export default {
   description: 'Ngobrol sama Hitori AI',
 
   async run(ctx) {
-    const query = (ctx.text || '').trim()
+    const { cleanText: query, mode: deliveryMode, wantRichHtml } = extractDeliveryMode(ctx.text || '')
 
     if (/^(reset|mulai( ulang)?|lupakan)/i.test(query)) {
       MEM.delete(ctx.sender)
@@ -244,15 +276,16 @@ export default {
     if (!query && !image) {
       return ctx.reply(
         `🤖 *${config.botName.toUpperCase()} AI*\n\n` +
-        'Mau ngobrol apa, Kak?\n\n' +
-        '*Contoh:*\n' +
-        '• `.ai siapa kamu?`\n' +
-        '• `.ai ambil file math.js`\n' +
-        '• `.ai rangkum https://...`\n' +
-        '• `.ai cari berita terbaru hari ini`\n' +
-        '• `.ai buatkan kode HTML game sederhana`\n' +
-        '• Reply foto + `.ai ini foto apa?`\n' +
-        '• `.ai reset` (mulai sesi baru)'
+          'Mau ngobrol apa, Kak?\n\n' +
+          '*Contoh:*\n' +
+          '• `.ai siapa kamu?`\n' +
+          '• `.ai ambil file math.js`\n' +
+          '• `.ai rangkum https://...`\n' +
+          '• `.ai cari berita terbaru hari ini`\n' +
+          '• `.ai buatkan game html snake` _(auto file `.html` jika panjang)_\n' +
+          '• `.ai --rich buatkan game html sederhana` _(coba kartu interaktif WA)_\n' +
+          '• Reply foto + `.ai ini foto apa?`\n' +
+          '• `.ai reset` _(mulai sesi baru)_'
       )
     }
 
@@ -260,7 +293,7 @@ export default {
     if (!aiCfg?.orca) {
       return ctx.reply(
         '⚠️ Provider AI belum dikonfigurasi.\n' +
-        'Tambahkan file `config/ai/orca.js` terlebih dahulu untuk mengaktifkan fitur `.ai`.'
+          'Tambahkan file `config/ai/orca.js` terlebih dahulu untuk mengaktifkan fitur `.ai`.'
       )
     }
 
@@ -274,15 +307,17 @@ export default {
       const file = query && ctx.isOwner ? detectFile(query) : null
 
       if (file && /\b(ambil(kan|in)?|kirim(kan)?|lihat|tunjuk(in)?|show|display|kasih)\b/i.test(query)) {
-        await sendSubRich(ctx, [
-          subText(
+        await deliverSmartCode(ctx, {
+          code: file.code,
+          fileName: file.name,
+          ext: file.ext,
+          mode: deliveryMode,
+          headerText:
             `🤖 *${config.botName.toUpperCase()} AI* — _File Protocol_\n` +
-            `✅ File \`${file.name}\` sudah diambil lengkap!\n\n📄 *Isi File:*`
-          ),
-          codeSubmessage(file.code, file.ext),
-          fileSummaryTable(file),
-          subText(footer())
-        ])
+            `✅ File \`${file.name}\` siap!\n\n📄 *Isi File:*`,
+          summaryRows: buildFileSummaryRows(file),
+          footerText: footer()
+        })
 
         await ctx.react('📎')
         return
@@ -291,7 +326,7 @@ export default {
       if (image && !ORCA_CONFIG.visionModel) {
         return ctx.reply(
           '👁️ Model vision belum dikonfigurasi pada `config/ai/orca.js`.\n' +
-          'Format kirim gambar sudah benar, tinggal aktifkan `ORCA_CONFIG.visionModel`.'
+            'Format kirim gambar sudah benar, tinggal aktifkan `ORCA_CONFIG.visionModel`.'
         )
       }
 
@@ -309,7 +344,7 @@ export default {
         } else {
           toolContext.push(
             `CATATAN: konten URL ${url} gagal diambil (diblokir situs/rate-limit). ` +
-            'Jangan hallucinate; bilang jujur kalau gak bisa baca isinya dan minta user paste bagian pentingnya.'
+              'Jangan hallucinate; bilang jujur kalau gak bisa baca isinya dan minta user paste bagian pentingnya.'
           )
         }
       } else if (query && /\b(cari(in)?|search|googling|google)\b/i.test(query) && jina?.search) {
@@ -320,7 +355,7 @@ export default {
         } else {
           toolContext.push(
             'CATATAN: pencarian web live gak tersedia saat ini, mungkin limit jadi coba kembali nanti. ' +
-            'Jangan hallucinate; kalau gak yakin, bilang jujur dan minta user kasih link.'
+              'Jangan hallucinate; kalau gak yakin, bilang jujur dan minta user kasih link.'
           )
         }
       }
@@ -342,15 +377,17 @@ export default {
       else userContent = { role: 'user', content: query }
       messages.push(userContent)
 
-      const codeMode = Boolean(query && !image && isCodeRequest(query))
+      const codeMode = Boolean(query && !image && (isCodeRequest(query) || wantRichHtml))
       let result = await orca.chat(messages, {
         model: image ? ORCA_CONFIG.visionModel : undefined,
         enable_reasoning: !codeMode,
-        max_tokens: codeMode ? 4000 : 2000
+        max_tokens: codeMode ? 8192 : 2000,
+        autoContinue: codeMode,
+        maxContinuations: 1
       })
 
       if (!result.text || !result.text.trim()) {
-        result = await orca.chat(messages, { enable_reasoning: false, max_tokens: 4000 })
+        result = await orca.chat(messages, { enable_reasoning: false, max_tokens: 4096 })
       }
 
       if (!result.text || !result.text.trim()) {
@@ -367,23 +404,55 @@ export default {
       const submessages = [
         subText(
           `🤖 *${config.botName.toUpperCase()} AI* — _${image ? 'Vision Mode' : 'Chat Mode'}_` +
-          (file ? '\n📎 File Protocol aktif' : '') +
-          (toolContext.length && !file ? '\n🌐 Live context aktif' : '')
+            (file ? '\n📎 File Protocol aktif' : '') +
+            (toolContext.length && !file ? '\n🌐 Live context aktif' : '')
         )
       ]
 
+      const parsedParts = extractPartsWithHtmlFallback(result.text)
+      const pendingDocs = []
+      const splitBatches = []
+      const htmlCandidates = []
       let contentCount = 0
-      for (const part of parseMarkdown(result.text)) {
+
+      for (const part of parsedParts) {
         if (part.type === 'text') {
           for (const c of chunkText(part.text.trim(), MAX_TEXT).slice(0, 6)) {
             submessages.push(subText(c))
             contentCount++
           }
-        } else if (part.type === 'code') {
-          submessages.push(subCode(part.code, part.lang))
-          contentCount++
         } else if (part.type === 'table') {
           submessages.push(subTable(part.rows))
+          contentCount++
+        } else if (part.type === 'code') {
+          const isHtmlDoc = isFullHtmlDocument(part.lang, part.code)
+          if (isHtmlDoc) htmlCandidates.push(part.code)
+
+          const shouldAttachDoc =
+            deliveryMode === 'file' || part.code.length > VIEW_CODE_LIMIT || isHtmlDoc
+          const fileName = deriveCodeFileName(part.code, part.lang, query, pendingDocs.length)
+
+          if (deliveryMode === 'split' && part.code.length > VIEW_CODE_LIMIT) {
+            const chunks = splitCodeChunks(part.code, SPLIT_CHUNK_LIMIT).slice(0, 5)
+            chunks.forEach((chunk, idx) => {
+              splitBatches.push([
+                subText(`📄 *${fileName}* — _Part ${idx + 1}/${chunks.length}_`),
+                subCode(chunk, part.lang || 'txt')
+              ])
+            })
+            if (part.code.length > SPLIT_CHUNK_LIMIT * 5) {
+              pendingDocs.push({ code: part.code, lang: part.lang, fileName })
+            }
+          } else if (shouldAttachDoc) {
+            pendingDocs.push({ code: part.code, lang: part.lang, fileName })
+            if (deliveryMode !== 'file') {
+              submessages.push(
+                buildPreviewCodeSub(part.code, part.lang || 'txt')
+              )
+            }
+          } else {
+            submessages.push(subCode(part.code, part.lang || 'txt'))
+          }
           contentCount++
         }
       }
@@ -396,13 +465,49 @@ export default {
 
       if (file) {
         submessages.push(subText(`📄 *Isi File:* \`${file.name}\``))
-        submessages.push(codeSubmessage(file.code, file.ext))
-        submessages.push(fileSummaryTable(file))
+        if (file.code.length > VIEW_CODE_LIMIT) {
+          submessages.push(buildPreviewCodeSub(file.code, file.ext))
+          pendingDocs.push({ code: file.code, lang: file.ext, fileName: file.name })
+        } else {
+          submessages.push(subCode(file.code, file.ext))
+        }
+        submessages.push(subTable(buildFileSummaryRows(file), 'Ringkasan File'))
+      }
+
+      if (pendingDocs.length > 0 && result.finishReason === 'length') {
+        submessages.push(subText('⚠️ _Catatan: Output kode sangat panjang; sebagian akhir mungkin terhenti di batas token provider._'))
       }
 
       submessages.push(subText(footer()))
 
-      await sendSubRich(ctx, submessages)
+      if (!(deliveryMode === 'file' && submessages.length <= 2 && pendingDocs.length > 0)) {
+        await sendSubRich(ctx, submessages)
+      }
+
+      for (const batch of splitBatches) {
+        await sendSubRich(ctx, batch)
+      }
+
+      for (const doc of pendingDocs) {
+        const lines = doc.code.split('\n').length
+        const kb = (doc.code.length / 1024).toFixed(1)
+        await sendCodeDocument(ctx, {
+          code: doc.code,
+          fileName: doc.fileName,
+          extOrLang: doc.lang,
+          caption: `📦 *${doc.fileName}*\n• ${lines} baris | ${kb} KB\n✅ File utuh tanpa terpotong.`
+        })
+      }
+
+      if (wantRichHtml && htmlCandidates.length > 0) {
+        const htmlPayload = htmlCandidates.sort((a, b) => b.length - a.length)[0]
+        try {
+          await sendRichHtml(ctx, htmlPayload)
+        } catch (richErr) {
+          console.warn('[AI] sendRichHtml gagal (file .html tetap terkirim):', richErr.message)
+        }
+      }
+
       await ctx.react('✨')
     } catch (e) {
       const msg = String(e.message || e)
@@ -413,7 +518,9 @@ export default {
             const fmt = formatSearch(searchRaw)
             if (fmt) {
               await sendSubRich(ctx, [
-                subText(`🔎 *${config.botName.toUpperCase()} AI* — _Mode Darurat_\nProvider AI sedang sibuk, berikut hasil pencarian langsung:\n\n${fmt}`),
+                subText(
+                  `🔎 *${config.botName.toUpperCase()} AI* — _Mode Darurat_\nProvider AI sedang sibuk, berikut hasil pencarian langsung:\n\n${fmt}`
+                ),
                 subText(footer())
               ])
               await ctx.react('🔎')
@@ -423,7 +530,9 @@ export default {
 
           if (pageRaw) {
             const subs = [
-              subText(`🌐 *${config.botName.toUpperCase()} AI* — _Mode Darurat_\nProvider AI sedang sibuk, berikut konten halaman langsung:`)
+              subText(
+                `🌐 *${config.botName.toUpperCase()} AI* — _Mode Darurat_\nProvider AI sedang sibuk, berikut konten halaman langsung:`
+              )
             ]
             for (const c of chunkText(pageRaw, MAX_TEXT).slice(0, 3)) subs.push(subText(c))
             subs.push(subText(footer()))

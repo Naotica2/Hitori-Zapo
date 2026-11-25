@@ -1,55 +1,139 @@
 /**
  * © Hitori-MD — WhatsApp Bot on Zapo-JS
- * FB-DL.js — Facebook downloader scraper
+ * FB-DL.js — Facebook downloader scraper (getfvido.com)
+ *
+ * Skrep by *JH a.k.a DHIKA - FIONY BOT* (adapted cleanly to ESM)
  */
+import axios from 'axios'
+
+const BASE_URL = 'https://getfvido.com'
+
+const REQUEST_HEADERS = {
+  Accept: '*/*',
+  'Accept-Language': 'id-ID,id;q=0.9',
+  Origin: BASE_URL,
+  Referer: `${BASE_URL}/`,
+  'Sec-Ch-Ua': '"Chromium";v="147", "Not.A/Brand";v="8"',
+  'Sec-Ch-Ua-Mobile': '?1',
+  'Sec-Ch-Ua-Platform': '"Android"',
+  'User-Agent':
+    'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Mobile Safari/537.36'
+}
+
+function extractCookies(headers) {
+  const raw = headers?.['set-cookie']
+  const list = Array.isArray(raw) ? raw : typeof raw === 'string' ? [raw] : []
+  return list
+    .map((entry) => String(entry).split(';')[0].trim())
+    .filter(Boolean)
+    .join('; ')
+}
+
+function extractToken(html) {
+  if (!html) return ''
+  return (
+    html.match(/name=["']token["'][^>]*value=["']([^"']+)["']/i)?.[1] ||
+    html.match(/value=["']([^"']+)["'][^>]*name=["']token["']/i)?.[1] ||
+    html.match(/id=["']token["'][^>]*value=["']([^"']+)["']/i)?.[1] ||
+    ''
+  )
+}
 
 export async function fbDownload(fbUrl) {
-  const axios = (await import('axios')).default
+  const rawInput = typeof fbUrl === 'string' ? fbUrl.trim() : ''
+  const targetUrl = rawInput.match(/https?:\/\/[^\s]+/i)?.[0] || ''
 
-  if (!fbUrl || typeof fbUrl !== 'string') {
+  if (!targetUrl) {
     throw new Error('URL Facebook tidak valid.')
   }
-  if (!/facebook\.com|fb\.watch/i.test(fbUrl)) {
+  if (!/facebook\.com|fb\.watch/i.test(targetUrl)) {
     throw new Error('URL bukan URL Facebook.')
   }
 
-  const apiUrl = `https://serverless-tooly-gateway-6n4h522y.ue.gateway.dev/facebook/video?url=${encodeURIComponent(fbUrl)}`
-
-  const { data } = await axios.get(apiUrl, {
-    headers: {
-      Accept: 'application/json',
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    },
-    timeout: 30000
+  const homeRes = await axios.get(`${BASE_URL}/`, {
+    headers: REQUEST_HEADERS,
+    timeout: 20_000,
+    validateStatus: () => true
   })
 
-  if (!data || !data.success) {
-    throw new Error('Gagal nyedot data dari API.')
+  if (homeRes.status >= 400) {
+    throw new Error(`Halaman getfvido gagal dimuat (HTTP ${homeRes.status}).`)
   }
 
-  let rawTitle = data.title || 'Unknown'
-  let title = rawTitle
-  let author = 'Unknown'
+  const homeHtml = typeof homeRes.data === 'string' ? homeRes.data : ''
+  const cookieStr = extractCookies(homeRes.headers)
+  const token = extractToken(homeHtml)
 
-  if (rawTitle.includes('|')) {
-    const parts = rawTitle.split('|')
-    author = parts.pop().trim()
-    title = parts.join('|').trim()
+  const payload = new URLSearchParams()
+  payload.append('url', targetUrl)
+  if (token) payload.append('token', token)
+
+  const postHeaders = {
+    ...REQUEST_HEADERS,
+    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+    'X-Requested-With': 'XMLHttpRequest',
+    ...(cookieStr ? { Cookie: cookieStr } : {})
   }
+
+  const apiRes = await axios.post(`${BASE_URL}/wp-json/aio-dl/video-data/`, payload.toString(), {
+    headers: postHeaders,
+    timeout: 25_000,
+    validateStatus: () => true
+  })
+
+  if (apiRes.status >= 400 || apiRes.data === undefined || apiRes.data === null) {
+    const errBody = typeof apiRes.data === 'string' ? apiRes.data : JSON.stringify(apiRes.data)
+    throw new Error(`HTTP ${apiRes.status}: ${String(errBody || '').slice(0, 180)}`)
+  }
+
+  const resData = typeof apiRes.data === 'string' ? JSON.parse(apiRes.data) : apiRes.data
+  const rawMedias = Array.isArray(resData?.medias) ? resData.medias : []
 
   const media = []
-  if (data.videos?.hd?.url) {
-    media.push({ quality: 'HD', size: data.videos.hd.size || '-', url: data.videos.hd.url })
-  }
-  if (data.videos?.sd?.url) {
-    media.push({ quality: 'SD', size: data.videos.sd.size || '-', url: data.videos.sd.url })
+  for (const item of rawMedias) {
+    const mediaUrl = typeof item?.url === 'string' ? item.url.trim() : ''
+    if (!mediaUrl) continue
+
+    const hasVideo = item.videoAvailable === true
+    const hasAudio = item.audioAvailable === true
+
+    media.push({
+      type: hasVideo ? 'video' : hasAudio ? 'audio' : 'media',
+      quality: item.quality ? String(item.quality).trim() : 'SD',
+      extension: item.extension ? String(item.extension).trim() : '',
+      size: item.formattedSize ? String(item.formattedSize).trim() : '-',
+      video: hasVideo,
+      audio: hasAudio,
+      url: mediaUrl
+    })
   }
 
   if (media.length === 0) {
-    throw new Error('Media kosong dari API.')
+    throw new Error(resData?.error || 'Media kosong atau link Facebook private/tidak tersedia.')
   }
 
-  return { status: true, data: { caption: title, author, media } }
+  const rawTitle = String(resData?.title || 'Facebook Video').trim()
+  let caption = rawTitle
+  let author = '-'
+  if (rawTitle.includes('|')) {
+    const parts = rawTitle.split('|')
+    author = parts.pop().trim() || '-'
+    caption = parts.join('|').trim() || rawTitle
+  }
+
+  return {
+    status: true,
+    author_skrep: 'JH a.k.a Dhika',
+    data: {
+      source: resData?.source || 'facebook',
+      url: resData?.url || targetUrl,
+      caption,
+      author,
+      duration: resData?.duration ? String(resData.duration).trim() : '',
+      thumbnail: resData?.thumbnail || '',
+      media
+    }
+  }
 }
 
 export default fbDownload
