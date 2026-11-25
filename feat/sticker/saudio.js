@@ -5,6 +5,9 @@
 
 import { randomBytes } from 'node:crypto'
 import { spawn } from 'node:child_process'
+import { writeFile, unlink } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import * as Zapo from 'zapo-js'
 import { downloadMediaMessage, resolveMediaPayload } from 'zapo-js'
 import config from '../../config.js'
@@ -13,6 +16,7 @@ import { imageToSticker, gifToSticker } from '../../lib/sticker.js'
 
 const SESSION_TTL = 5 * 60 * 1000
 const SESSION_CAP = 50
+const MAX_SOUND_SECONDS = 10
 const MEM = (globalThis.HITORI_SAUDIO_MEM ??= new Map())
 const ENCODE_HOOK = (globalThis.HITORI_SAUDIO_ENCODE_HOOK ??= {
   base: null,
@@ -27,6 +31,8 @@ const HELP = (prefix = config.mainPrefix) =>
   '*Mode 2 Langkah:*\n' +
   `1) Kirim/reply gambar/stiker + \`${prefix}saudio\`\n` +
   `2) Kirim/reply audio + \`${prefix}saudio\`\n\n` +
+  '*Aturan Sound Sticker:*\n' +
+  `• Durasi audio maks *${MAX_SOUND_SECONDS} detik* (otomatis dipotong & di-encode ke OGG Opus mono 48kHz)\n\n` +
   `\`${prefix}saudio reset\` → batalin sesi tersimpan`
 
 async function extractMedia(message) {
@@ -36,7 +42,7 @@ async function extractMedia(message) {
     if (!payload) return null
     const mime = String(payload.mimetype || '')
     const mType = String(payload.mediaType || '')
-    const isAudio = mType === 'audio' || mime.startsWith('audio/')
+    const isAudio = mType === 'audio' || mType === 'ptt' || mime.startsWith('audio/')
     const isVisual = mType === 'image' || mType === 'sticker' || mime.startsWith('image/')
     if (!isAudio && !isVisual) return null
     const stream = await downloadMediaMessage(message)
@@ -110,9 +116,11 @@ function toBufStrict(val) {
   return Buffer.from(String(val), 'base64')
 }
 
-function runFFmpeg(args, input) {
+function runFFmpeg(args, input = null) {
   return new Promise((resolve, reject) => {
-    const p = spawn('ffmpeg', args)
+    const p = spawn('ffmpeg', args, {
+      stdio: [input ? 'pipe' : 'ignore', 'pipe', 'pipe']
+    })
     const out = []
     let err = ''
     p.stdout.on('data', (d) => out.push(d))
@@ -124,31 +132,131 @@ function runFFmpeg(args, input) {
       if (code !== 0) return reject(new Error(err.slice(-400) || `ffmpeg exit ${code}`))
       resolve(Buffer.concat(out))
     })
-    p.stdin.on('error', () => {})
-    p.stdin.end(input)
+    if (input) {
+      p.stdin.on('error', () => {})
+      p.stdin.end(input)
+    }
   })
 }
 
-async function toOpus(input) {
-  if (input.length >= 4 && input.subarray(0, 4).toString('ascii') === 'OggS') {
-    return { buf: input, mimetype: 'audio/ogg; codecs=opus' }
+/**
+ * Inspects an Ogg Opus buffer without external tools so we can reject
+ * non-Opus OGG containers, enforce the 10-second cap, and populate
+ * AudioMessage.seconds accurately.
+ */
+export function parseOggOpus(input) {
+  const b = Buffer.isBuffer(input) ? input : Buffer.from(input || [])
+  if (b.length < 47 || b.toString('ascii', 0, 4) !== 'OggS') {
+    return { isOpus: false, channels: 0, preSkip: 0, durationSec: 0 }
   }
-  const buf = await runFFmpeg(
-    [
+
+  let offset = 0
+  let pageIndex = 0
+  let isOpus = false
+  let channels = 0
+  let preSkip = 0
+  let lastGranule = null
+
+  while (offset + 27 <= b.length) {
+    if (b.toString('ascii', offset, offset + 4) !== 'OggS') break
+    const granule = b.readBigInt64LE(offset + 6)
+    const segCount = b[offset + 26]
+    const tableEnd = offset + 27 + segCount
+    if (tableEnd > b.length) break
+
+    let payloadLen = 0
+    for (let i = 0; i < segCount; i++) payloadLen += b[offset + 27 + i]
+    const payloadEnd = tableEnd + payloadLen
+    if (payloadEnd > b.length) break
+
+    if (pageIndex === 0) {
+      if (payloadLen < 19 || b.toString('ascii', tableEnd, tableEnd + 8) !== 'OpusHead') {
+        return { isOpus: false, channels: 0, preSkip: 0, durationSec: 0 }
+      }
+      isOpus = true
+      channels = b[tableEnd + 9]
+      preSkip = b.readUInt16LE(tableEnd + 10)
+    } else if (granule >= 0n) {
+      lastGranule = granule
+    }
+
+    offset = payloadEnd
+    pageIndex += 1
+  }
+
+  if (!isOpus || lastGranule === null) {
+    return { isOpus: false, channels, preSkip, durationSec: 0 }
+  }
+
+  const totalSamples = lastGranule > BigInt(preSkip) ? Number(lastGranule - BigInt(preSkip)) : 0
+  const durationSec = Math.max(0, totalSamples / 48000)
+  return { isOpus: true, channels, preSkip, durationSec }
+}
+
+function clampSoundSeconds(durationSec) {
+  return Math.max(1, Math.min(MAX_SOUND_SECONDS, Math.round(durationSec)))
+}
+
+async function toOpus(input) {
+  const inInfo = parseOggOpus(input)
+  if (
+    inInfo.isOpus &&
+    inInfo.channels === 1 &&
+    inInfo.durationSec > 0.05 &&
+    inInfo.durationSec <= MAX_SOUND_SECONDS
+  ) {
+    return {
+      buf: input,
+      mimetype: 'audio/ogg; codecs=opus',
+      seconds: clampSoundSeconds(inInfo.durationSec),
+      durationSec: inInfo.durationSec
+    }
+  }
+
+  const tmpIn = join(tmpdir(), `hitori-saudio-${Date.now()}-${randomBytes(4).toString('hex')}`)
+  await writeFile(tmpIn, input)
+  try {
+    const buf = await runFFmpeg([
+      '-hide_banner',
       '-v', 'error',
-      '-i', 'pipe:0',
+      '-i', tmpIn,
+      '-t', String(MAX_SOUND_SECONDS),
       '-vn',
-      '-map_metadata', '-1',
       '-c:a', 'libopus',
       '-b:a', '64k',
       '-ar', '48000',
       '-ac', '1',
+      '-application', 'audio',
+      '-frame_duration', '20',
+      '-avoid_negative_ts', 'make_zero',
+      '-map_metadata', '-1',
       '-f', 'ogg',
       'pipe:1'
-    ],
-    input
-  )
-  return { buf, mimetype: 'audio/ogg; codecs=opus' }
+    ])
+
+    const outInfo = parseOggOpus(buf)
+    if (!outInfo.isOpus || outInfo.durationSec <= 0.05 || buf.length < 64) {
+      throw new Error('Audio kosong atau gagal dikonversi ke OGG Opus.')
+    }
+
+    return {
+      buf,
+      mimetype: 'audio/ogg; codecs=opus',
+      seconds: clampSoundSeconds(outInfo.durationSec),
+      durationSec: outInfo.durationSec
+    }
+  } catch (err) {
+    if (
+      err?.code === 'ENOENT' &&
+      inInfo.isOpus &&
+      inInfo.durationSec > MAX_SOUND_SECONDS
+    ) {
+      throw new Error(`SOUND_TOO_LONG_NO_FFMPEG:${inInfo.durationSec.toFixed(1)}`)
+    }
+    throw err
+  } finally {
+    await unlink(tmpIn).catch(() => undefined)
+  }
 }
 
 async function toWebp(input, mime = '') {
@@ -205,10 +313,28 @@ export function parseWebp(b) {
     }
   }
   if (c === 'VP8X') {
+    let firstFrameLength
+    const isAnimated = (b[20] & 2) !== 0
+    if (isAnimated) {
+      let off = 30
+      while (off + 8 <= b.length) {
+        const tag = b.toString('ascii', off, off + 4)
+        let size = b.readUInt32LE(off + 4)
+        if (size % 2 !== 0) size += 1
+        const nextOff = off + 8 + size
+        if (nextOff <= off || nextOff > b.length) break
+        if (tag === 'ANMF') {
+          firstFrameLength = nextOff
+          break
+        }
+        off = nextOff
+      }
+    }
     return {
       width: 1 + b.readUIntLE(24, 3),
       height: 1 + b.readUIntLE(27, 3),
-      isAnimated: (b[20] & 2) !== 0
+      isAnimated,
+      firstFrameLength
     }
   }
   throw new Error('Unsupported WebP chunk')
@@ -270,11 +396,16 @@ async function processAudioSticker(ctx, audioBuf, visualBuf, visualMime = '') {
 
     const [a, s] = await Promise.all([
       ctx.client.message.upload(opus.buf, { type: 'audio', mimetype: opus.mimetype }),
-      ctx.client.message.upload(stickerBuf, { type: 'sticker', mimetype: 'image/webp' })
+      ctx.client.message.upload(stickerBuf, {
+        type: 'sticker',
+        mimetype: 'image/webp',
+        ...(webp.firstFrameLength ? { firstFrameLength: webp.firstFrameLength } : {})
+      })
     ])
 
     const aKey = toBufStrict(a.mediaKey)
     const sKey = toBufStrict(s.mediaKey)
+    const sidecarBuf = a.streamingSidecar?.length ? toBufStrict(a.streamingSidecar) : null
 
     const audioBytes = Buffer.concat([
       Buffer.from(
@@ -284,9 +415,11 @@ async function processAudioSticker(ctx, audioBuf, visualBuf, visualMime = '') {
           fileSha256: toBufStrict(a.fileSha256),
           fileEncSha256: toBufStrict(a.fileEncSha256),
           fileLength: a.fileLength ?? opus.buf.length,
+          seconds: opus.seconds,
           mediaKey: aKey,
           directPath: a.directPath,
-          mediaKeyTimestamp: a.mediaKeyTimestamp || Math.floor(Date.now() / 1000)
+          mediaKeyTimestamp: a.mediaKeyTimestamp || Math.floor(Date.now() / 1000),
+          ...(sidecarBuf ? { streamingSidecar: sidecarBuf } : {})
         }).finish()
       ),
       ld(17, mediaDomainInfo(aKey))
@@ -305,6 +438,8 @@ async function processAudioSticker(ctx, audioBuf, visualBuf, visualMime = '') {
           directPath: s.directPath,
           fileLength: s.fileLength ?? stickerBuf.length,
           mediaKeyTimestamp: s.mediaKeyTimestamp || Math.floor(Date.now() / 1000),
+          ...(webp.firstFrameLength ? { firstFrameLength: webp.firstFrameLength } : {}),
+          ...(s.firstFrameSidecar?.length ? { firstFrameSidecar: toBufStrict(s.firstFrameSidecar) } : {}),
           isAnimated: webp.isAnimated,
           stickerSentTs: Date.now()
         }).finish()
@@ -336,12 +471,19 @@ async function processAudioSticker(ctx, audioBuf, visualBuf, visualMime = '') {
     await ctx.react('✅').catch(() => {})
   } catch (e) {
     await ctx.react('❎').catch(() => {})
-    if (/ffmpeg|ENOENT/i.test(String(e?.message || e))) {
+    const msg = String(e?.message || e)
+    if (msg.startsWith('SOUND_TOO_LONG_NO_FFMPEG:')) {
+      const sec = msg.split(':')[1] || '>10'
       return ctx.reply(
-        '🎬 `ffmpeg` belum terpasang di server untuk mengonversi audio non-OGG. Install `ffmpeg` terlebih dahulu atau kirim Voice Note (`.ogg`).'
+        `⏱️ Durasi audio/VN (${sec} detik) melebihi batas maksimal WhatsApp *${MAX_SOUND_SECONDS} detik*, dan \`ffmpeg\` belum terpasang di server untuk memotongnya otomatis.`
       )
     }
-    return ctx.reply('❌ Gagal bikin Sticker Audio:\n' + String(e?.message || e).slice(0, 300))
+    if (/ffmpeg|ENOENT/i.test(msg)) {
+      return ctx.reply(
+        `🎬 \`ffmpeg\` belum terpasang di server untuk mengonversi/memotong audio ke OGG Opus (maks ${MAX_SOUND_SECONDS} detik). Install \`ffmpeg\` terlebih dahulu.`
+      )
+    }
+    return ctx.reply('❌ Gagal bikin Sticker Audio:\n' + msg.slice(0, 300))
   }
 }
 
