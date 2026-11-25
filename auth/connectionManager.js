@@ -13,20 +13,51 @@ export function markShutdown() {
 export function setupConnection(client) {
   const MAX_RECONNECT_ATTEMPTS = 10
   let reconnectAttempt = 0
+  let recoverFallbackTimer = null
+
+  client.on('stream_failure', (e) => {
+    if (shuttingDown) return
+    logger.warn(`⚠️ Stream failure: ${e?.reason || e?.code || JSON.stringify(e)}`)
+  })
+
+  client.on('stanza_error', (e) => {
+    if (shuttingDown) return
+    logger.warn(`⚠️ Stanza error: ${e?.code || e?.text || JSON.stringify(e)}`)
+  })
 
   client.on('connection', (event) => {
     if (shuttingDown) return // intentional close — diem aja
 
     if (event.status === 'open') {
+      if (recoverFallbackTimer) {
+        clearTimeout(recoverFallbackTimer)
+        recoverFallbackTimer = null
+      }
       logger.success(`🟢 Terhubung${event.isNewLogin ? ' (login baru)' : ''}`)
       reconnectAttempt = 0
       return
     }
 
-    logger.warn({ reason: event.reason, isLogout: event.isLogout }, '🔴 Koneksi terputus')
+    const reasonText = event.reason || 'unknown'
+    const codeText = event.code != null ? `, code: ${event.code}` : ''
+    logger.warn(`🔴 Koneksi terputus (reason: ${reasonText}${codeText}, isLogout: ${Boolean(event.isLogout)})`)
 
     if (event.isLogout) {
       logger.error('❌ Device di-unlink. Hapus folder session/ lalu jalankan ulang.')
+      return
+    }
+
+    if (event.reason === 'failure_client_too_old') {
+      logger.warn('🔄 Versi WA default kedaluwarsa (client_too_old) — auto-recover versi terbaru...')
+      if (!recoverFallbackTimer) {
+        recoverFallbackTimer = setTimeout(() => {
+          recoverFallbackTimer = null
+          if (!shuttingDown && !client.getState()?.connected) {
+            void reconnectWithBackoff()
+          }
+        }, 12_000)
+        recoverFallbackTimer.unref?.()
+      }
       return
     }
 

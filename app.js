@@ -146,6 +146,7 @@ const client = new WaClient(
     sessionId: 'default',
     connectTimeoutMs: 15_000,
     nodeQueryTimeoutMs: 30_000,
+    recoverFromClientTooOld: true,
     history: { enabled: true, requireFullSync: true },
     media: {
       processor: createMediaProcessor(),
