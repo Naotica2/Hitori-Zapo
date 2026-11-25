@@ -255,6 +255,63 @@ function deriveCodeFileName(code, lang, query, index) {
   return `${base}${index > 0 ? `-${index + 1}` : ''}.${ext}`
 }
 
+function buildSelfContainedHtml(parsedParts) {
+  const htmlBlocks = []
+  const cssBlocks = []
+  const jsBlocks = []
+
+  for (const part of parsedParts) {
+    if (part.type !== 'code') continue
+    const ext = resolveCodeExt(part.lang)
+    if (ext === 'html') htmlBlocks.push(part.code)
+    else if (ext === 'css') cssBlocks.push(part.code)
+    else if (ext === 'js' || ext === 'mjs') jsBlocks.push(part.code)
+  }
+
+  if (htmlBlocks.length === 0) return null
+
+  const primary = htmlBlocks.sort((a, b) => b.length - a.length)[0]
+  if (cssBlocks.length === 0 && jsBlocks.length === 0 && /<html|<body|<script/i.test(primary)) {
+    return primary
+  }
+
+  const styleTag = cssBlocks.length ? `<style>\n${cssBlocks.join('\n')}\n</style>` : ''
+  const scriptTag = jsBlocks.length ? `<script>\n${jsBlocks.join('\n')}\n</script>` : ''
+
+  if (/<html[\s>]/i.test(primary)) {
+    let merged = primary
+    if (styleTag) {
+      merged = /<\/head>/i.test(merged)
+        ? merged.replace(/<\/head>/i, `${styleTag}\n</head>`)
+        : `${styleTag}\n${merged}`
+    }
+    if (scriptTag) {
+      merged = /<\/body>/i.test(merged)
+        ? merged.replace(/<\/body>/i, `${scriptTag}\n</body>`)
+        : `${merged}\n${scriptTag}`
+    }
+    return merged
+  }
+
+  return [
+    '<!DOCTYPE html>',
+    '<html lang="id">',
+    '<head>',
+    '<meta charset="UTF-8">',
+    '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">',
+    '<title>Hitori Web App</title>',
+    styleTag,
+    '</head>',
+    '<body>',
+    primary,
+    scriptTag,
+    '</body>',
+    '</html>'
+  ]
+    .filter(Boolean)
+    .join('\n')
+}
+
 const footer = () => `\n> _*Powered by ${config.botName}*_`
 
 export default {
@@ -368,6 +425,17 @@ export default {
         messages.push({
           role: 'system',
           content: 'KONTEKS LIVE (hasil tools, pakai sebagai rujukan):\n\n' + toolContext.join('\n\n')
+        })
+      }
+
+      if (wantRichHtml) {
+        messages.push({
+          role: 'system',
+          content:
+            'ATURAN KARTU INTERAKTIF WHATSAPP WEBVIEW: Gabungkan seluruh HTML, CSS (<style>), dan JavaScript (<script>) ' +
+            'menjadi SATU blok ```html lengkap dan self-contained (tanpa link/script CDN eksternal). ' +
+            'Wajib pakai <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">, ' +
+            'tombol sentuh/tap di layar (jangan hanya kontrol keyboard), dan jangan pakai alert(), confirm(), atau prompt().'
         })
       }
 
@@ -499,12 +567,15 @@ export default {
         })
       }
 
-      if (wantRichHtml && htmlCandidates.length > 0) {
-        const htmlPayload = htmlCandidates.sort((a, b) => b.length - a.length)[0]
-        try {
-          await sendRichHtml(ctx, htmlPayload)
-        } catch (richErr) {
-          console.warn('[AI] sendRichHtml gagal (file .html tetap terkirim):', richErr.message)
+      if (wantRichHtml) {
+        const bundledHtml = buildSelfContainedHtml(parsedParts)
+        const htmlPayload = bundledHtml || htmlCandidates.sort((a, b) => b.length - a.length)[0]
+        if (htmlPayload) {
+          try {
+            await sendRichHtml(ctx, htmlPayload, { withVerification: false, withEdit: false })
+          } catch (richErr) {
+            console.warn('[AI] sendRichHtml gagal (file .html tetap terkirim):', richErr.message)
+          }
         }
       }
 
