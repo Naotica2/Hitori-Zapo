@@ -341,14 +341,17 @@ function assetOf(part) {
 }
 
 const CODE_SPAN_RE = /(```[\s\S]*?```|`[^`\n]+`)/g
+const WIDGET_DSL_RE =
+  /<\/?(?:box|row|col|column|grid|grid-item|card|caption|title|subtitle|badge|icon|divider|spacer|markdown|vstack|hstack|stack|list|list-item|AsyncImageGroup|AsyncImage|ImageGroup|ImageCarousel|Carousel|VideoGroup|WeatherCard|StockChart|ProductCard|PlaceCard|EntityCard|MapCard)\b[^>]*>/i
 
-/** Membersihkan tag widget Android ChatGPT (<Cite>, <Link>, <text>) di luar blok kode. */
+/** Membersihkan tag widget Android ChatGPT (<Cite>, <Link>, <text>, <box>, <grid>, dll) di luar blok kode. */
 export function cleanAndroidMarkup(text) {
   return String(text || '')
     .split(CODE_SPAN_RE)
     .map((seg, idx) => {
       if (idx % 2 === 1) return seg
-      return seg
+      const hadWidgetDsl = WIDGET_DSL_RE.test(seg)
+      let out = seg
         .replace(/[\uE200-\uE20F][\s\S]*?[\uE200-\uE20F]/g, '')
         .replace(/[\uE200-\uE20F]/g, '')
         .replace(/<Cit(?:e|ation|ations)\b[^>]*\/>/gi, '')
@@ -361,6 +364,31 @@ export function cleanAndroidMarkup(text) {
           if (!cleanLabel || normLabel === normUrl) return url
           return `${cleanLabel} (${url})`
         })
+
+      if (hadWidgetDsl) {
+        out = out
+          .replace(/<divider\b[^>]*\/?>/gi, '\n──────────\n')
+          .replace(
+            /<\/?(?:icon|spacer|AsyncImageGroup|AsyncImage|ImageGroup|ImageCarousel|Carousel|VideoGroup|WeatherCard|StockChart|ProductCard|PlaceCard|EntityCard|MapCard)\b[^>]*\/?>/gi,
+            ''
+          )
+          .replace(/<\/(?:divider|icon|spacer)>/gi, '')
+          .replace(/<badge\b[^>]*>([\s\S]*?)<\/badge>/gi, (_, t) => ` [${t.trim()}]`)
+          .replace(
+            /<caption\b[^>]*>([\s\S]*?)<\/caption>\s*<title\b[^>]*>([\s\S]*?)<\/title>/gi,
+            (_, c, ttl) => `\n• ${c.trim()}: *${ttl.trim()}*`
+          )
+          .replace(/<title\b[^>]*>([\s\S]*?)<\/title>/gi, (_, t) => `\n*${t.trim()}*`)
+          .replace(/<subtitle\b[^>]*>([\s\S]*?)<\/subtitle>/gi, (_, t) => `\n_${t.trim()}_`)
+          .replace(/<caption\b[^>]*>([\s\S]*?)<\/caption>/gi, (_, t) => `\n${t.trim()}`)
+          .replace(
+            /<\/?(?:box|row|col|column|grid|grid-item|card|list|list-item|markdown|vstack|hstack|stack)\b[^>]*>/gi,
+            '\n'
+          )
+          .replace(/\n[ \t]+/g, '\n')
+      }
+
+      return out
         .replace(/<\/?text\b[^>]*>/gi, '')
         .replace(/[ \t]+([.,;:!?])/g, '$1')
         .replace(/[ \t]{2,}/g, ' ')
