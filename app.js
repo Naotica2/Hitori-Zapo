@@ -15,6 +15,7 @@ import { setupQR } from './auth/qrHandler.js'
 import { setupPairing } from './auth/pairingHandler.js'
 import { setupConnection, markShutdown } from './auth/connectionManager.js'
 import { setupReactChannel } from './core/reactChannel.js'
+import { setupReactionHandler } from './handlers/reactionHandler.js'
 import { loadFeatures } from './feat/loader.js'
 import { setupHotReload, stopHotReload } from './core/hotReload.js'
 import { route } from './handlers/messageHandler.js'
@@ -136,7 +137,8 @@ const store = createStore({
   providers: {
     auth: 'sqlite', signal: 'sqlite', preKey: 'sqlite', session: 'sqlite',
     identity: 'sqlite', senderKey: 'sqlite', appState: 'sqlite',
-    privacyToken: 'sqlite', messages: 'sqlite', threads: 'sqlite', contacts: 'sqlite'
+    privacyToken: 'sqlite', messages: 'sqlite', messageSecret: 'sqlite',
+    threads: 'sqlite', contacts: 'sqlite'
   }
 })
 
@@ -148,6 +150,7 @@ const client = new WaClient(
     nodeQueryTimeoutMs: 30_000,
     recoverFromClientTooOld: true,
     history: { enabled: true, requireFullSync: true },
+    addons: { autoDecrypt: true, persistAllSecrets: true },
     media: {
       processor: createMediaProcessor(),
       generateThumbnail: true,
@@ -173,6 +176,7 @@ async function main() {
   setupConnection(client)
   setupGroupHandler(client)
   setupReactChannel(client)
+  setupReactionHandler(client, store)
 
   maintenance()
   setInterval(maintenance, 6 * 60 * 60 * 1000)

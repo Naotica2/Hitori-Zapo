@@ -471,7 +471,7 @@ export default {
 
       const submessages = [
         subText(
-          `🤖 *${config.botName.toUpperCase()} AI* — _${image ? 'Vision Mode' : 'Chat Mode'}_` +
+          `🤖 *${config.botName.toUpperCase()} AI* — _${image ? 'Vision Mode' : 'Chat Mode'}${result.provider ? ` • ${result.provider}` : ''}_` +
             (file ? '\n📎 File Protocol aktif' : '') +
             (toolContext.length && !file ? '\n🌐 Live context aktif' : '')
         )
