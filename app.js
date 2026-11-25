@@ -27,6 +27,7 @@ import { checkMenfessReply } from './handlers/menfessHandler.js'
 import { checkMinecraftAnswer } from './handlers/minecraftHandler.js'
 import { normalizeNumber, getStaffEntry } from './core/staff.js'
 import { maintenance } from './core/rpg.js'
+import { startReminderScheduler, stopReminderScheduler } from './core/reminders.js'
 import { runEval } from './core/evalRunner.js'
 import { runExec } from './core/execRunner.js'
 import { reactTo } from './core/react.js'
@@ -180,6 +181,7 @@ async function main() {
 
   maintenance()
   setInterval(maintenance, 6 * 60 * 60 * 1000)
+  startReminderScheduler(client)
 
   setupOwnerMetaHandler(client)
 
@@ -230,6 +232,7 @@ main().catch((err) => {
 process.on('SIGINT', async () => {
   logger.info('🛑 Mematikan bot...')
   markShutdown()
+  stopReminderScheduler()
   try { clientLogger.level = 'error' } catch {}
   await stopHotReload().catch(() => {})
   await client.disconnect().catch(() => {})

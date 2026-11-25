@@ -6,7 +6,15 @@ import fs from 'node:fs'
 import path from 'node:path'
 import config from '../../config.js'
 import { LANGS, parseMarkdown } from '../../lib/highlight.js'
-import { tryDownloadImageBuffer, resolveTargetMedia } from '../../lib/media.js'
+import { extractTargetMediaInput, analyzePdf, transcribeAudio } from '../../lib/aiMultimodal.js'
+import { runToolAgent } from '../../lib/aiAgent.js'
+import {
+  assertSafePublicUrl,
+  isSensitiveRepoPath,
+  redactSecrets,
+  safePublicFetch,
+  wrapUntrustedContent
+} from '../../lib/security.js'
 import {
   VIEW_CODE_LIMIT,
   SPLIT_CHUNK_LIMIT,
@@ -122,30 +130,19 @@ function detectFile(query) {
 
   for (const c of candidates) {
     if (c !== cwd && c.startsWith(cwd + path.sep)) {
+      const rel = path.relative(cwd, c)
+      if (isSensitiveRepoPath(rel)) continue
       try {
         if (!fs.statSync(c).isFile()) continue
         const raw = fs.readFileSync(c)
         if (raw.includes(0)) continue
         return {
-          safe: path.relative(cwd, c),
+          safe: rel,
           name: path.basename(c),
           code: raw.toString('utf8'),
           ext: (path.extname(c).slice(1) || 'txt').toLowerCase()
         }
       } catch {}
-    }
-  }
-  return null
-}
-
-async function extractImage(ctx) {
-  const { rawMessage, quoted } = resolveTargetMedia(ctx)
-  for (const msg of [rawMessage, quoted]) {
-    if (!msg?.imageMessage) continue
-    const buf = await tryDownloadImageBuffer(msg)
-    if (buf?.length && buf.length <= 6 * 1024 * 1024) {
-      const mime = (msg.imageMessage.mimetype || 'image/jpeg').split(';')[0]
-      return `data:${mime};base64,${buf.toString('base64')}`
     }
   }
   return null
@@ -169,23 +166,17 @@ function extractUrl(query) {
 }
 
 async function readPage(url, jina) {
-  if (jina?.read) {
-    const viaJina = await jina.read(url, MAX_CTX)
-    if (viaJina) return viaJina
-  }
-
   try {
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; HitoriMD/1.0)' },
-      redirect: 'follow',
-      signal: AbortSignal.timeout(15000)
-    })
-    if (!res.ok) return null
-    const type = res.headers.get('content-type') || ''
-    const raw = await res.text()
-    if (!type.includes('html')) return raw.slice(0, MAX_CTX)
+    const safeUrl = await assertSafePublicUrl(url)
+    if (jina?.read) {
+      const viaJina = await jina.read(safeUrl.toString(), MAX_CTX)
+      if (viaJina) return viaJina
+    }
 
-    const text = raw
+    const res = await safePublicFetch(safeUrl.toString(), { timeoutMs: 15_000 })
+    if (!res.contentType.includes('html')) return res.text.slice(0, MAX_CTX)
+
+    const text = res.text
       .replace(/<script[\s\S]*?<\/script>/gi, ' ')
       .replace(/<style[\s\S]*?<\/style>/gi, ' ')
       .replace(/<[^>]+>/g, ' ')
@@ -199,8 +190,8 @@ async function readPage(url, jina) {
       .replace(/\n{3,}/g, '\n\n')
       .trim()
     return text.slice(0, MAX_CTX)
-  } catch {
-    return null
+  } catch (err) {
+    return { blockedError: err?.message || 'Gagal membaca URL' }
   }
 }
 
@@ -316,9 +307,10 @@ const footer = () => `\n> _*Powered by ${config.botName}*_`
 
 export default {
   name: 'ai',
-  aliases: ['hitori', 'ask', 'tanya'],
+  aliases: ['hitori', 'ask', 'tanya', 'agent'],
   tags: 'ai',
-  description: 'Ngobrol sama Hitori AI',
+  cooldown: 4000,
+  description: 'AI Agent ber-tool & Multimodal (Foto, Voice Note, PDF/Dokumen, Pengingat)',
 
   async run(ctx) {
     const { cleanText: query, mode: deliveryMode, wantRichHtml } = extractDeliveryMode(ctx.text || '')
@@ -328,20 +320,27 @@ export default {
       return ctx.reply(`🧠 Sesi ${config.botName} AI di-reset. Mulai obrolan baru yuk!`)
     }
 
-    const image = await extractImage(ctx)
+    let media = null
+    try {
+      media = await extractTargetMediaInput(ctx)
+    } catch (mediaErr) {
+      return ctx.reply('⚠️ ' + String(mediaErr?.message || mediaErr))
+    }
 
-    if (!query && !image) {
+    if (!query && !media) {
       return ctx.reply(
-        `🤖 *${config.botName.toUpperCase()} AI*\n\n` +
+        `🤖 *${config.botName.toUpperCase()} AI AGENT*\n\n` +
           'Mau ngobrol apa, Kak?\n\n' +
-          '*Contoh:*\n' +
+          '*Fitur Chat & Tool Agent:*\n' +
           '• `.ai siapa kamu?`\n' +
-          '• `.ai ambil file math.js`\n' +
-          '• `.ai rangkum https://...`\n' +
-          '• `.ai cari berita terbaru hari ini`\n' +
-          '• `.ai buatkan game html snake` _(auto file `.html` jika panjang)_\n' +
-          '• `.ai --rich buatkan game html sederhana` _(coba kartu interaktif WA)_\n' +
-          '• Reply foto + `.ai ini foto apa?`\n' +
+          '• `.ai ingatkan aku 15m lagi matikan kompor`\n' +
+          '• `.ai cari berita teknologi hari ini`\n' +
+          '• `.ai rangkum https://...` _(anti-SSRF)_\n' +
+          '• `.ai buatkan game html snake` _(auto file `.html` jika panjang)_\n\n' +
+          '*Multimodal (Reply / Kirim Media):*\n' +
+          '• Reply *Foto* + `.ai jelaskan gambar ini`\n' +
+          '• Reply *Voice Note / Audio* + `.ai rangkum poin pentingnya`\n' +
+          '• Reply *PDF / Dokumen Teks* + `.ai ringkas & terjemahkan`\n' +
           '• `.ai reset` _(mulai sesi baru)_'
       )
     }
@@ -361,7 +360,7 @@ export default {
     let searchRaw = null
 
     try {
-      const file = query && ctx.isOwner ? detectFile(query) : null
+      const file = query && ctx.isOwner && !media ? detectFile(query) : null
 
       if (file && /\b(ambil(kan|in)?|kirim(kan)?|lihat|tunjuk(in)?|show|display|kasih)\b/i.test(query)) {
         await deliverSmartCode(ctx, {
@@ -380,11 +379,45 @@ export default {
         return
       }
 
-      if (image && !ORCA_CONFIG.visionModel) {
+      if (media?.kind === 'image' && !ORCA_CONFIG.visionModel) {
         return ctx.reply(
           '👁️ Model vision belum dikonfigurasi pada `config/ai/orca.js`.\n' +
             'Format kirim gambar sudah benar, tinggal aktifkan `ORCA_CONFIG.visionModel`.'
         )
+      }
+
+      // Jalur khusus PDF multimodal (Gemini native PDF -> fallback teks PDF lokal)
+      if (media?.kind === 'pdf') {
+        const pdfRes = await analyzePdf(media.buffer, media.fileName, query, {
+          orca,
+          cfg: ORCA_CONFIG,
+          persona
+        })
+
+        const newHist = MEM.get(ctx.sender) || []
+        newHist.push({ role: 'user', content: `[PDF: ${media.fileName}] ${query || 'Ringkas PDF ini'}` })
+        newHist.push({ role: 'assistant', content: (pdfRes.text || '').slice(0, 1200) })
+        while (newHist.length > MEM_CAP) newHist.shift()
+        MEM.set(ctx.sender, newHist)
+
+        const pdfSubs = [
+          subText(
+            `🤖 *${config.botName.toUpperCase()} AI* — _${pdfRes.modeLabel}${pdfRes.provider ? ` • ${pdfRes.provider}` : ''}_\n📄 File: \`${media.fileName}\``
+          ),
+          ...chunkText(pdfRes.text.trim(), MAX_TEXT).slice(0, 6).map(subText),
+          subText(footer())
+        ]
+        await sendSubRich(ctx, pdfSubs)
+        await ctx.react('✨')
+        return
+      }
+
+      let sttInfo = null
+      let audioTranscript = ''
+      if (media?.kind === 'audio') {
+        const stt = await transcribeAudio(media.buffer, media.mime, ORCA_CONFIG)
+        audioTranscript = stt.transcript
+        sttInfo = stt.provider
       }
 
       const toolContext = []
@@ -395,25 +428,22 @@ export default {
 
       const url = query ? extractUrl(query) : null
       if (url) {
-        pageRaw = await readPage(url, jina)
-        if (pageRaw) {
-          toolContext.push(`KONTEN URL ${url}:\n${pageRaw}`)
+        const pageRes = await readPage(url, jina)
+        if (typeof pageRes === 'string' && pageRes) {
+          pageRaw = pageRes
+          toolContext.push(`KONTEN URL ${url}:\n${wrapUntrustedContent(`url:${url}`, pageRes, MAX_CTX)}`)
         } else {
+          const reason = pageRes?.blockedError || 'diblokir situs/rate-limit'
           toolContext.push(
-            `CATATAN: konten URL ${url} gagal diambil (diblokir situs/rate-limit). ` +
-              'Jangan hallucinate; bilang jujur kalau gak bisa baca isinya dan minta user paste bagian pentingnya.'
+            `CATATAN: konten URL ${url} gagal diambil (${reason}). ` +
+              'Jangan mengarang isinya; jelaskan secara jujur ke user.'
           )
         }
       } else if (query && /\b(cari(in)?|search|googling|google)\b/i.test(query) && jina?.search) {
         const q = query.replace(/\b(cari(in)?|search|googling|google)\b\s*/i, '').trim() || query
         searchRaw = await jina.search(q, MAX_CTX)
         if (searchRaw) {
-          toolContext.push(`HASIL SEARCH WEB LIVE:\n${searchRaw}`)
-        } else {
-          toolContext.push(
-            'CATATAN: pencarian web live gak tersedia saat ini, mungkin limit jadi coba kembali nanti. ' +
-              'Jangan hallucinate; kalau gak yakin, bilang jujur dan minta user kasih link.'
-          )
+          toolContext.push(`HASIL SEARCH WEB LIVE:\n${wrapUntrustedContent('web_search', searchRaw, MAX_CTX)}`)
         }
       }
 
@@ -424,9 +454,46 @@ export default {
       if (toolContext.length) {
         messages.push({
           role: 'system',
-          content: 'KONTEKS LIVE (hasil tools, pakai sebagai rujukan):\n\n' + toolContext.join('\n\n')
+          content: 'KONTEKS LIVE (pakai sebagai rujukan):\n\n' + toolContext.join('\n\n')
         })
       }
+
+      let userContent
+      let modeLabel = 'Chat Mode'
+      if (media?.kind === 'image') {
+        modeLabel = 'Vision Mode'
+        userContent = orca.visionMessage(
+          media.dataUri,
+          query || 'Deskripsiin gambar atau dokumen foto ini dengan detail dan terstruktur dalam bahasa Indonesia.'
+        )
+      } else if (media?.kind === 'audio') {
+        modeLabel = `Voice Note • ${sttInfo}`
+        const task =
+          query ||
+          'Ringkas poin-poin inti dari transkrip voice note berikut secara jelas dalam bahasa Indonesia.'
+        userContent = {
+          role: 'user',
+          content:
+            `${task}\n\n` +
+            `Transkrip Voice Note (${media.seconds ? `${media.seconds}s` : 'audio'}):\n` +
+            wrapUntrustedContent('voice_note', audioTranscript, 6000)
+        }
+      } else if (media?.kind === 'textdoc') {
+        modeLabel = `Dokumen • ${media.fileName}`
+        const task =
+          query ||
+          `Ringkas isi dokumen "${media.fileName}" dan jelaskan poin terpentingnya dalam bahasa Indonesia.`
+        userContent = {
+          role: 'user',
+          content:
+            `${task}\n\n` +
+            `Isi File (${media.fileName}):\n` +
+            wrapUntrustedContent(`file:${media.fileName}`, media.textContent, 8000)
+        }
+      } else {
+        userContent = { role: 'user', content: query }
+      }
+      messages.push(userContent)
 
       if (wantRichHtml) {
         messages.push({
@@ -439,20 +506,37 @@ export default {
         })
       }
 
-      let userContent
-      if (image && query) userContent = orca.visionMessage(image, query)
-      else if (image) userContent = orca.visionMessage(image, 'Deskripsiin gambar ini detail dalam bahasa Indonesia.')
-      else userContent = { role: 'user', content: query }
-      messages.push(userContent)
+      const codeMode = Boolean(query && media?.kind !== 'image' && (isCodeRequest(query) || wantRichHtml))
+      const canUseToolAgent =
+        !codeMode &&
+        !wantRichHtml &&
+        !file &&
+        media?.kind !== 'image'
 
-      const codeMode = Boolean(query && !image && (isCodeRequest(query) || wantRichHtml))
-      let result = await orca.chat(messages, {
-        model: image ? ORCA_CONFIG.visionModel : undefined,
-        enable_reasoning: !codeMode,
-        max_tokens: codeMode ? 8192 : 2000,
-        autoContinue: codeMode,
-        maxContinuations: 1
-      })
+      let result = null
+      let toolsUsed = []
+
+      if (canUseToolAgent) {
+        try {
+          result = await runToolAgent({ ctx, messages, orcaCfg: aiCfg, maxTokens: 2000 })
+          toolsUsed = result.toolsUsed || []
+          if (toolsUsed.length && media?.kind !== 'audio' && media?.kind !== 'textdoc') {
+            modeLabel = 'Agent Mode'
+          }
+        } catch {
+          result = null
+        }
+      }
+
+      if (!result) {
+        result = await orca.chat(messages, {
+          model: media?.kind === 'image' ? ORCA_CONFIG.visionModel : undefined,
+          enable_reasoning: !codeMode,
+          max_tokens: codeMode ? 8192 : 2000,
+          autoContinue: codeMode,
+          maxContinuations: 1
+        })
+      }
 
       if (!result.text || !result.text.trim()) {
         result = await orca.chat(messages, { enable_reasoning: false, max_tokens: 4096 })
@@ -463,21 +547,35 @@ export default {
         return ctx.reply('⚠️ Provider AI mengembalikan respons kosong. Coba ulang sekali lagi ya, Kak 🙏')
       }
 
+      const safeReplyText = redactSecrets(result.text)
       const newHist = MEM.get(ctx.sender) || []
-      newHist.push({ role: 'user', content: query || '[user mengirim gambar]' })
-      newHist.push({ role: 'assistant', content: (result.text || '').slice(0, 1200) })
+      const memUserLabel =
+        query ||
+        (media?.kind === 'audio'
+          ? `[VN: ${audioTranscript.slice(0, 120)}]`
+          : media?.kind === 'textdoc'
+            ? `[Dokumen: ${media.fileName}]`
+            : '[user mengirim gambar]')
+      newHist.push({ role: 'user', content: memUserLabel })
+      newHist.push({ role: 'assistant', content: safeReplyText.slice(0, 1200) })
       while (newHist.length > MEM_CAP) newHist.shift()
       MEM.set(ctx.sender, newHist)
 
       const submessages = [
         subText(
-          `🤖 *${config.botName.toUpperCase()} AI* — _${image ? 'Vision Mode' : 'Chat Mode'}${result.provider ? ` • ${result.provider}` : ''}_` +
+          `🤖 *${config.botName.toUpperCase()} AI* — _${modeLabel}${result.provider ? ` • ${result.provider}` : ''}_` +
             (file ? '\n📎 File Protocol aktif' : '') +
+            (toolsUsed.length ? `\n🛠️ Tools: ${toolsUsed.join(', ')}` : '') +
             (toolContext.length && !file ? '\n🌐 Live context aktif' : '')
         )
       ]
 
-      const parsedParts = extractPartsWithHtmlFallback(result.text)
+      if (media?.kind === 'audio' && audioTranscript) {
+        const preview = audioTranscript.length > 260 ? audioTranscript.slice(0, 260) + '…' : audioTranscript
+        submessages.push(subText(`🎙️ *Transkrip:* _"${preview}"_`))
+      }
+
+      const parsedParts = extractPartsWithHtmlFallback(safeReplyText)
       const pendingDocs = []
       const splitBatches = []
       const htmlCandidates = []
@@ -618,7 +716,7 @@ export default {
       }
 
       await ctx.react('❎')
-      ctx.reply('*Maaf Error:* ' + msg.slice(0, 300))
+      ctx.reply('*Maaf Error:* ' + redactSecrets(msg).slice(0, 300))
     }
   }
 }
