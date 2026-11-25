@@ -1,7 +1,5 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass.
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * mediaServer.js — WebSocket media proxy stateless
  *
  * Client connect: wss://audio.jhx.my.id/wss/audio?url=<ENCODED>&mime=<MIME>

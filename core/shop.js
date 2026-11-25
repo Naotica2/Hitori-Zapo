@@ -1,7 +1,5 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * shop.js — Logic sell/buy/craft/cook Nusantara Wilds.
  *
  * - Wallet SATU dompet (users.sqlite)

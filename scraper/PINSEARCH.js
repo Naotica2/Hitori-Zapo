@@ -1,17 +1,14 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * PINSEARCH.js — Scraper Pinterest Search
  */
 
-export async function JHPin(query = 'Fiony JKT48', limit = 10) {
+export async function pinSearch(query = 'Anime Aesthetic', limit = 10) {
   const axios = (await import('axios')).default;
   
   const baseRes = { 
     status: true,
-    author_skrep: 'JH a.k.a Dhika', 
-    kesayangan: 'Fiony Alveria♡',
+    author: 'Hitori-MD',
     data: {}
   };
 
@@ -19,7 +16,7 @@ export async function JHPin(query = 'Fiony JKT48', limit = 10) {
     const encoded = encodeURIComponent(JSON.stringify({ options: { query } }));
     const url = `https://www.pinterest.com/resource/BaseSearchResource/get/?data=${encoded}`;
 
-    const jantung = {
+    const reqHeaders = {
       "screen-dpr": "4",
       "x-pinterest-pws-handler": "www/search/[scope].js",
       "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -28,7 +25,7 @@ export async function JHPin(query = 'Fiony JKT48', limit = 10) {
     };
 
     const res = await axios.head(url, { 
-      headers: jantung, 
+      headers: reqHeaders, 
       validateStatus: () => true 
     });
 
@@ -61,4 +58,4 @@ export async function JHPin(query = 'Fiony JKT48', limit = 10) {
   }
 }
 
-export default JHPin;
+export default pinSearch;

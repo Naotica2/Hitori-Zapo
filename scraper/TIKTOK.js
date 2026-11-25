@@ -1,18 +1,15 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * TIKTOK.js — TikTok Downloader Scraper
  */
 
-export async function JHTTDL(url) {
+export async function tiktokDownload(url) {
   const axios = (await import('axios')).default || await import('axios')
   const crypto = await import('crypto')
 
   const baseRes = {
     status: true,
-    author_skrep: 'JH a.k.a Dhika',
-    kesayangan: 'Fiony Alveria♡',
+    author: 'Hitori-MD',
     data: {}
   }
 
@@ -124,4 +121,4 @@ export async function JHTTDL(url) {
   }
 }
 
-export default JHTTDL
+export default tiktokDownload

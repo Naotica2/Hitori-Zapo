@@ -1,7 +1,5 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * toggle.js — .on / .off / .enable / .disable <fitur>
  * Permission: staff bot atau admin grup. User biasa ditolak.
  */

@@ -1,13 +1,13 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
- * play.js — Putar lagu kesukaanmu dengan ini.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
+ * play.js — Putar lagu kesukaanmu dengan cepat.
  */
-import { jhydl } from '../../scraper/YT-DL.js';
-import { onRichReply } from '../../handlers/messageHandler.js';
+import config from '../../config.js'
+import { downloadUrlBuffer } from '../../lib/media.js'
+import { ytdl } from '../../scraper/YT-DL.js'
+import { onRichReply } from '../../handlers/messageHandler.js'
 
-const SESSIONS = (globalThis.JH_PLAY_SESSIONS ??= new Map());
+const SESSIONS = (globalThis.HITORI_PLAY_SESSIONS ??= new Map())
 const PER_PAGE = 2;
 
 const cut = (s, n) => {
@@ -41,14 +41,12 @@ async function downloadAndSend(ctx, idx) {
   const v = sess.results[idx];
   if (!v) return ctx.reply('Nomor gak valid.');
 
-  await ctx.react('⏳');
+  await ctx.react('⏳')
   try {
-    const data = await jhydl.download(v.url, 'mp3');
-    if (!data || data.error) throw new Error(data?.error || 'Gagal unduh audio.');
+    const data = await ytdl.download(v.url, 'mp3')
+    if (!data || data.error) throw new Error(data?.error || 'Gagal unduh audio.')
 
-    const fr = await fetch(data.download_url);
-    if (!fr.ok) throw new Error('Gagal ambil audio: ' + fr.status);
-    const buf = Buffer.from(await fr.arrayBuffer());
+    const buf = await downloadUrlBuffer(data.download_url, { timeout: 120_000 })
 
     await ctx.client.message.send(ctx.chat, {
       type: 'audio',
@@ -91,55 +89,55 @@ async function sendPage(ctx, page) {
     name: 'quick_reply',
     buttonParamsJson: JSON.stringify({
       display_text: String(start + i + 1),
-      id: `jhplay:${ctx.sender}:pick:${start + i}`
+      id: `hitoriplay:${ctx.sender}:pick:${start + i}`
     })
-  }));
+  }))
 
   if (page > 0) {
     buttons.push({
       name: 'quick_reply',
       buttonParamsJson: JSON.stringify({
         display_text: '◀ Prev',
-        id: `jhplay:${ctx.sender}:prev:${page - 1}`
+        id: `hitoriplay:${ctx.sender}:prev:${page - 1}`
       })
-    });
+    })
   }
   if (page < totalPages - 1) {
     buttons.push({
       name: 'quick_reply',
       buttonParamsJson: JSON.stringify({
         display_text: 'Next ▶',
-        id: `jhplay:${ctx.sender}:next:${page + 1}`
+        id: `hitoriplay:${ctx.sender}:next:${page + 1}`
       })
-    });
+    })
   }
 
   items.forEach((v, i) => {
-    onRichReply(`jhplay:${ctx.sender}:pick:${start + i}`, async (c2) => {
-      await downloadAndSend(c2, start + i);
-    });
-  });
+    onRichReply(`hitoriplay:${ctx.sender}:pick:${start + i}`, async (c2) => {
+      await downloadAndSend(c2, start + i)
+    })
+  })
   if (page > 0) {
-    onRichReply(`jhplay:${ctx.sender}:prev:${page - 1}`, async (c2) => {
-      await sendPage(c2, page - 1);
-    });
+    onRichReply(`hitoriplay:${ctx.sender}:prev:${page - 1}`, async (c2) => {
+      await sendPage(c2, page - 1)
+    })
   }
   if (page < totalPages - 1) {
-    onRichReply(`jhplay:${ctx.sender}:next:${page + 1}`, async (c2) => {
-      await sendPage(c2, page + 1);
-    });
+    onRichReply(`hitoriplay:${ctx.sender}:next:${page + 1}`, async (c2) => {
+      await sendPage(c2, page + 1)
+    })
   }
 
   await ctx.client.message.send(ctx.chat, {
     interactiveMessage: {
       body: { text },
-      footer: { text: '🎧 FionyVerse • Music Player' },
+      footer: { text: `🎧 ${config.botName} • Music Player` },
       nativeFlowMessage: {
         buttons,
         messageVersion: 1
       }
     }
-  });
+  })
 }
 
 export default {
@@ -149,13 +147,13 @@ export default {
   description: 'Search YouTube audio, pilih lewat button',
 
   async run(ctx) {
-    const query = ctx.text;
+    const query = ctx.text
     if (!query) {
       return ctx.reply(
-        '✦ ──『 🎧 JH MUSIC 』── ⚝\n\n' +
-        'Masukkan judul lagu yang\nmau lo cari & putar 🎶\n\n' +
+        `✦ ──『 🎧 ${config.botName.toUpperCase()} MUSIC 』── ⚝\n\n` +
+        'Masukkan judul lagu yang\nmau dicari & diputar 🎶\n\n' +
         '*Contoh:*\n.play Bercinta Lewat Kata'
-      );
+      )
     }
 
     await ctx.react('⏳');

@@ -1,7 +1,7 @@
 {
-  "name": "Fiony Bot",
+  "name": "hitori-md",
   "version": "0.1.0",
-  "description": "Base bot WhatsApp custom by JamvanHax0r di atas Zapo-JS — plain JavaScript, feature-based, dengan dukungan richMessage (nativeFlow buttons & list).",
+  "description": "Hitori-MD — Bot WhatsApp modular berbasis Zapo-JS dengan dukungan richMessage, interactive flow, downloader, AI, media tools, dan RPG.",
   "type": "module",
   "main": "app.js",
   "scripts": {
@@ -12,6 +12,7 @@
     "@napi-rs/canvas": "^1.0.9",
     "@zapo-js/media-utils": "^1.0.0",
     "@zapo-js/store-sqlite": "latest",
+    "adm-zip": "^0.6.1",
     "axios": "^1.20.0",
     "better-sqlite3": "latest",
     "cheerio": "^1.2.0",

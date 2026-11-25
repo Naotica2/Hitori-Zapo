@@ -1,7 +1,5 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass.
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * uno.js — Game UNO Multiplayer di grup. Engine ada di lib/UNOEngine.js.
  * Kode Lama — Rich HTML
  * https://paste.myconan.net/683291-f02af03a.txt

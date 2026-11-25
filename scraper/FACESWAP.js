@@ -1,8 +1,6 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass.
- * Hargai sebagaimana u mau dihargai.
- * faceswap.js — Face Swap engine.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
+ * FACESWAP.js — Face Swap engine.
  */
 
 async function getProxy() {
@@ -57,18 +55,18 @@ export async function faceSwap({ target, swap } = {}) {
     const form = new FormData()
 
     form.append('target_image', Buffer.from(targetBuf), {
-      filename: `Fiony_target_${rand1}.jpg`,
+      filename: `Hitori_target_${rand1}.jpg`,
       contentType: 'image/jpeg'
     })
 
     form.append('swap_image', Buffer.from(swapBuf), {
-      filename: `Fiony_swap_${rand2}.png`,
+      filename: `Hitori_swap_${rand2}.png`,
       contentType: 'image/png'
     })
 
     form.append('version', '2')
 
-    const jantung = {
+    const reqHeaders = {
       ...form.getHeaders(),
       'Product-Code': '067003',
       'Product-Serial': crypto.randomBytes(16).toString('hex'),
@@ -79,7 +77,7 @@ export async function faceSwap({ target, swap } = {}) {
     const { data: createRes } = await axios.post(
       'https://api.remaker.ai/api/pai/v3/ai-facevary/appapi/create-job',
       form,
-      { headers: jantung, proxy }
+      { headers: reqHeaders, proxy }
     )
 
     if (createRes.code !== 100000 || !createRes.result?.job_id) {
@@ -94,7 +92,7 @@ export async function faceSwap({ target, swap } = {}) {
 
       const { data: pollRes } = await axios.get(
         `https://api.remaker.ai/api/pai/v3/ai-facevary/appapi/get-job/${jobId}`,
-        { headers: jantung, proxy }
+        { headers: reqHeaders, proxy }
       )
 
       if (pollRes.code === 300006) continue

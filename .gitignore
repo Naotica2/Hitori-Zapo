@@ -25,3 +25,4 @@ jhstory.js
 jhspot.js
 *.log
 *.backup
+storage/

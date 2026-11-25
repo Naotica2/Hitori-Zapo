@@ -1,8 +1,6 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
- * SPOTIFY.js — Scraper Spotify Searcher + Downloader by JAMVANHAX0R
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
+ * SPOTIFY.js — Scraper Spotify Searcher + Downloader
  */
 
 import puppeteer from 'puppeteer';
@@ -57,8 +55,8 @@ function mapTrack(t) {
   };
 }
 
-export async function JHSpotSearch(query) {
-  const baseRes = { status: true, author_skrep: 'JH a.k.a Dhika', kesayangan: 'Fiony Alveria♡', data: {} };
+export async function spotifySearch(query) {
+  const baseRes = { status: true, author: 'Hitori-MD', data: {} };
   let browser;
 
   try {
@@ -106,9 +104,9 @@ export async function JHSpotSearch(query) {
   }
 }
 
-export async function JHSpotDL(targetUrl) {
-  const baseRes = { status: true, author_skrep: 'JH a.k.a Dhika', kesayangan: 'Fiony Alveria♡', data: {} };
-  const jantung = {
+export async function spotifyDownload(targetUrl) {
+  const baseRes = { status: true, author: 'Hitori-MD', data: {} };
+  const reqHeaders = {
     "content-type": "application/json",
     "accept": "application/json, text/plain, */*",
     "user-agent": UA,
@@ -119,7 +117,7 @@ export async function JHSpotDL(targetUrl) {
     const initReq = await axios.post('https://www.spotify-downloads.com/api/download', {
       url: targetUrl,
       quality: "320k"
-    }, { headers: jantung });
+    }, { headers: reqHeaders });
 
     if (!initReq.data || !initReq.data.job_id) {
       throw new Error("Gagal membuat antrean download di server.");
@@ -131,7 +129,7 @@ export async function JHSpotDL(targetUrl) {
     for (let i = 0; i < 20; i++) {
       await new Promise(resolve => setTimeout(resolve, 3000));
       
-      const checkReq = await axios.get(`https://www.spotify-downloads.com/api/status/${jobId}`, { headers: jantung });
+      const checkReq = await axios.get(`https://www.spotify-downloads.com/api/status/${jobId}`, { headers: reqHeaders });
       
       if (checkReq.data && checkReq.data.status === 'ready') {
         finalData = checkReq.data;
@@ -162,8 +160,8 @@ export async function JHSpotDL(targetUrl) {
   }
 }
 
-export async function JHSDown(targetUrl) {
-  const baseRes = { status: true, author_skrep: 'JH a.k.a Dhika', kesayangan: 'Fiony Alveria♡', data: {} };
+export async function spotiDownFallback(targetUrl) {
+  const baseRes = { status: true, author: 'Hitori-MD', data: {} };
 
   try {
     const spoHtml = await axios.get(targetUrl);

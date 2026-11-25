@@ -1,27 +1,9 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass.
- * Hargai sebagaimana u mau dihargai.
- * brat.js — Bikin STICKER STATIS "brat"
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
+ * brat.js — Bikin stiker statis gaya "brat"
  */
-
-import { generateBratSticker } from '../../lib/bratGenerator.js';
-
-const KNOWN_THEMES = ['white', 'black', 'green'];
-
-function parseArgs(raw) {
-  const trimmed = raw.trim();
-  const pipeIdx = trimmed.indexOf('|');
-
-  if (pipeIdx !== -1) {
-    const maybeTheme = trimmed.slice(0, pipeIdx).trim().toLowerCase();
-    if (KNOWN_THEMES.includes(maybeTheme)) {
-      return { theme: maybeTheme, text: trimmed.slice(pipeIdx + 1).trim() };
-    }
-  }
-
-  return { theme: 'white', text: trimmed };
-}
+import config from '../../config.js'
+import { generateBratSticker, parseBratArgs } from '../../lib/bratGenerator.js'
 
 export default {
   name: 'brat',
@@ -30,7 +12,7 @@ export default {
   description: 'Bikin sticker brat-style statis',
 
   async run(ctx) {
-    const raw = (ctx.text || '').trim();
+    const raw = (ctx.text || '').trim()
     if (!raw) {
       return ctx.reply(
         '✦ *BRAT STICKER* ✦\n\n' +
@@ -38,28 +20,30 @@ export default {
         'Pilih tema: *.brat <white/black/green>|<teks>*\n\n' +
         'Contoh:\n.brat Halo Dunia\n.brat black|Gelap Tapi Estetik\n\n' +
         '(mau versi gerak/animated? pake *.bratvideo <teks>*)'
-      );
+      )
     }
 
-    const { theme, text } = parseArgs(raw);
+    const { theme, text } = parseBratArgs(raw)
 
-    await ctx.react('⏳');
+    await ctx.react('⏳')
     try {
       const webpBuffer = await generateBratSticker({
         text,
         theme,
-        packName: 'Made With',
-        packAuthor: 'Fiony Bot♡'
-      });
+        packName: config.sticker.packName,
+        packAuthor: config.sticker.author
+      })
 
       await ctx.client.message.send(ctx.chat, {
-        type: 'sticker', media: webpBuffer, mimetype: 'image/webp'
-      });
+        type: 'sticker',
+        media: webpBuffer,
+        mimetype: 'image/webp'
+      })
 
-      await ctx.react('✅');
+      await ctx.react('✅')
     } catch (e) {
-      await ctx.react('❎');
-      ctx.reply('Gagal bikin sticker brat: ' + (e.message || e));
+      await ctx.react('❎')
+      ctx.reply('Gagal bikin sticker brat: ' + (e.message || e))
     }
   }
-};
+}

@@ -1,7 +1,5 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * gameHandler.js — Registry sesi game + listener jawaban.
  * Sesi dikunci per JENIS game per grup. Timeout 60 detik.
  * [UPDATE BELOW]

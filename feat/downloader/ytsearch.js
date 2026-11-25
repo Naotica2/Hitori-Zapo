@@ -1,16 +1,15 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass.
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * ytsearch.js — Cari video YouTube, Download Audio/Videonya dengan Button
  */
 
+import config from '../../config.js';
 import { onRichReply } from '../../handlers/messageHandler.js';
 import { searchYouTube } from '../../scraper/YT-Search.js';
 import ytvFeature from './ytmp4.js';
 import ytaFeature from './ytmp3.js';
 
-const SESSIONS = (globalThis.JH_YTSEARCH_SESSIONS ??= new Map());
+const SESSIONS = (globalThis.HITORI_YTSEARCH_SESSIONS ??= new Map());
 const PER_PAGE = 2;
 const LINE = '━━━━━━━━━━━━━━━━━━━━';
 
@@ -45,7 +44,7 @@ async function showFormatButtons(ctx, video) {
   await ctx.client.message.send(ctx.chat, {
     interactiveMessage: {
       body: { text },
-      footer: { text: '🎬🎵 FionyVerse • Pilih Format' },
+      footer: { text: `🎬🎵 ${config.botName} • Pilih Format` },
       nativeFlowMessage: { buttons, messageVersion: 1 }
     }
   });
@@ -130,7 +129,7 @@ async function sendPage(ctx, page) {
   await ctx.client.message.send(ctx.chat, {
     interactiveMessage: {
       body: { text },
-      footer: { text: '🔎 FionyVerse • YouTube Search' },
+      footer: { text: `🔎 ${config.botName} • YouTube Search` },
       nativeFlowMessage: { buttons, messageVersion: 1 }
     }
   });

@@ -1,49 +1,14 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass.
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * faceswap.js — Face Swap AI
  */
-import { downloadMediaMessage, resolveMediaPayload } from 'zapo-js'
+import { getEvent, getContextInfo, tryDownloadImageBuffer, downloadUrlBuffer } from '../../lib/media.js'
 import { faceSwap } from '../../scraper/FACESWAP.js'
 
 const MAX_BUF = 10 * 1024 * 1024
 const SESSION_TTL = 5 * 60 * 1000
 const SESSION_CAP = 10
-const MEM = (globalThis.JH_FACESWAP_MEM ??= new Map())
-
-function getEvent(ctx) {
-  return ctx.message ?? ctx.event ?? ctx.raw ?? ctx.msg ?? null
-}
-
-function getContextInfo(message) {
-  if (!message || typeof message !== 'object') return null
-  for (const key of Object.keys(message)) {
-    const node = message[key]
-    if (node && typeof node === 'object' && node.contextInfo) return node.contextInfo
-  }
-  return null
-}
-
-async function streamToBuffer(stream) {
-  const chunks = []
-  for await (const chunk of stream) chunks.push(chunk)
-  return Buffer.concat(chunks)
-}
-
-async function extractImageBuffer(message) {
-  if (!message) return null
-  try {
-    const payload = resolveMediaPayload(message)
-    if (!payload || !payload.mimetype || !String(payload.mimetype).startsWith('image/')) return null
-    const stream = await downloadMediaMessage(message)
-    const buf = await streamToBuffer(stream)
-    return buf?.length ? buf : null
-  } catch (e) {
-    console.log('[FaceSwap] extract image gagal:', String(e.message || e).slice(0, 120))
-    return null
-  }
-}
+const MEM = (globalThis.HITORI_FACESWAP_MEM ??= new Map())
 
 function detectMime(buf) {
   if (buf[0] === 0x89 && buf[1] === 0x50) return 'image/png'
@@ -84,10 +49,7 @@ async function processSwap(ctx, target, swap) {
   }
 
   try {
-    const res = await fetch(resultUrl, { signal: AbortSignal.timeout(60000) })
-    if (!res.ok) throw new Error('fetch hasil HTTP ' + res.status)
-    const buf = Buffer.from(await res.arrayBuffer())
-    if (!buf.length || buf.length > MAX_BUF) throw new Error('hasil invalid/kegedean')
+    const buf = await downloadUrlBuffer(resultUrl, { timeout: 60_000, maxBytes: MAX_BUF })
 
     await ctx.client.message.send(ctx.chat, {
       type: 'image',
@@ -138,8 +100,8 @@ export default {
     const ctxInfo = getContextInfo(rawMessage)
     const quoted = ctxInfo?.quotedMessage ?? null
 
-    const quotedBuf = await extractImageBuffer(quoted)
-    const attachedBuf = await extractImageBuffer(rawMessage)
+    const quotedBuf = await tryDownloadImageBuffer(quoted)
+    const attachedBuf = await tryDownloadImageBuffer(rawMessage)
 
     const sourcesNow = []
     if (quotedBuf) sourcesNow.push(quotedBuf)

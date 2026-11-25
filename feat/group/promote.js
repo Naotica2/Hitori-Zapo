@@ -1,7 +1,5 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * promote.js — .promote / .demote admin grup via tag atau nomor.
  * [FIX] Reply pakai mention rapi (LID di-resolve ke PN).
  */

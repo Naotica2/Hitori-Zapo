@@ -1,7 +1,5 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * UNBLUR.js — Scraper AI Unblur Image
  */
 
@@ -9,8 +7,8 @@ import axios from 'axios';
 import crypto from 'crypto';
 import FormData from 'form-data';
 
-export async function JHUnblur(imgBuffer) {
-  const baseRes = { status: true, author_skrep: 'JH a.k.a Dhika', kesayangan: 'Fiony Alveria♡', data: { result_url: '' } };
+export async function unblurImage(imgBuffer) {
+  const baseRes = { status: true, author: 'Hitori-MD', data: { result_url: '' } };
   
   try {
     const { data: proxyList } = await axios.get('https://proxy.jhx.my.id/jh-proxy');
@@ -82,7 +80,7 @@ export async function JHUnblur(imgBuffer) {
 
   } catch (error) {
     const rawMsg = error.response?.data?.message || error.message;
-    const cleanMsg = rawMsg.replace(/unblurimage|unwatermark/gi, 'FionyAI'); 
+    const cleanMsg = rawMsg.replace(/unblurimage|unwatermark/gi, 'HitoriAI'); 
     return { ...baseRes, status: false, error: cleanMsg };
   }
 }

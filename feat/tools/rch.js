@@ -1,11 +1,10 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * rch.js — WhatsApp Channel Reaction
  */
+import config from '../../config.js'
 import { logger } from '../../core/logger.js'
-import { JHRCH } from '../../scraper/rch.js'
+import { reactChannelApi } from '../../scraper/rch.js'
 
 export default {
   name: 'react',
@@ -14,18 +13,18 @@ export default {
   cooldown: 5000,
   description: 'React postingan WhatsApp Channel menggunakan emoji (bisa reply link atau ketik langsung)',
   async run(ctx) {
-    const args = ctx.args || (ctx.text ? ctx.text.split(' ').slice(1) : []);
-    
-    let link = args[0];
-    let emoji = args[1] || '❤️'; 
+    const args = ctx.args || (ctx.text ? ctx.text.split(' ').slice(1) : [])
 
-    const quoted = ctx.quoted ? (ctx.quoted.text || ctx.quoted.caption || '') : '';
+    let link = args[0]
+    let emoji = args[1] || '❤️'
+
+    const quoted = ctx.quoted ? (ctx.quoted.text || ctx.quoted.caption || '') : ''
     if (!link && quoted) {
-      const match = quoted.match(/(https:\/\/whatsapp\.com\/channel\/[^\s]+)/);
+      const match = quoted.match(/(https:\/\/whatsapp\.com\/channel\/[^\s]+)/)
       if (match) {
-        link = match[1];
+        link = match[1]
         if (args[0] && !args[0].startsWith('http')) {
-          emoji = args[0];
+          emoji = args[0]
         }
       }
     }
@@ -37,35 +36,34 @@ export default {
         `• ${ctx.prefix}react <link_channel> <emoji>\n` +
         `• Atau reply link channel dengan ketik: ${ctx.prefix}react <emoji>\n\n` +
         `*Contoh:* ${ctx.prefix}react https://whatsapp.com/channel/... 🔥`
-      );
-      return;
+      )
+      return
     }
 
-    await ctx.reply(`⏳ Sedang memproses reaction *${emoji}* ke channel...`);
+    await ctx.reply(`⏳ Sedang memproses reaction *${emoji}* ke channel...`)
 
     try {
-      const result = await JHRCH(link, emoji);
+      const result = await reactChannelApi(link, emoji)
 
       if (!result.status || !result.data?.ok) {
-        const errMsg = result.data?.message || result.error || 'Gagal mengirim reaction.';
-        await ctx.reply(`❌ Gagal: ${errMsg}`);
-        return;
+        const errMsg = result.data?.message || result.error || 'Gagal mengirim reaction.'
+        await ctx.reply(`❌ Gagal: ${errMsg}`)
+        return
       }
 
-      const qData = result.data.data;
-      const replyText = 
+      const qData = result.data.data
+      const replyText =
         `✅ *REACTION BERHASIL DIPROSES!*\n\n` +
         `📌 *Queue Number:* ${result.data.queueNumber}\n` +
         `💬 *Message ID:* ${qData.messageId}\n` +
         `❤️ *Emojis:* ${qData.emojis.join(', ')}\n\n` +
-        `> _*Powered by FionyVerse*_`;
+        `> _*Powered by ${config.botName}*_`
 
-      await ctx.reply(replyText);
-      logger.info(`✨ React channel sukses terkirim ke ${qData.jid}`);
-
+      await ctx.reply(replyText)
+      logger.info(`✨ React channel sukses terkirim ke ${qData.jid}`)
     } catch (err) {
-      logger.error({ err: err.message }, 'Error saat eksekusi command react.');
-      await ctx.reply(`❌ Terjadi kesalahan internal: ${err.message}`);
+      logger.error({ err: err.message }, 'Error saat eksekusi command react.')
+      await ctx.reply(`❌ Terjadi kesalahan internal: ${err.message}`)
     }
   }
 }

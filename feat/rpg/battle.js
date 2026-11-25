@@ -1,7 +1,5 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * battle.js — Tantang monster rimba (tiered) + narasi pertarungan.
  */
 import { createCharacter } from '../../core/rpg.js'

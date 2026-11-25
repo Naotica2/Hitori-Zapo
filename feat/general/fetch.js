@@ -1,14 +1,12 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass.
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * fetch.js — Fetch isi sebuah URL (gambar/teks/json/html/file apapun)
  */
 import { format } from 'util';
 import path from 'path';
 import { onRichReply } from '../../handlers/messageHandler.js';
 
-const RETRY_SESSIONS = (globalThis.JH_FETCH_SESSIONS ??= new Map());
+const RETRY_SESSIONS = (globalThis.HITORI_FETCH_SESSIONS ??= new Map());
 
 const MAX_REDIRECTS = 20;
 const MAX_BYTES = 100 * 1024 * 1024;

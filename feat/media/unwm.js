@@ -1,33 +1,10 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * unwm.js — Bersihkan Watermark Dari Gambar
  */
-
-import { JHUNWM } from '../../scraper/UNWM.js';
-import { downloadMediaMessage, resolveMediaPayload } from 'zapo-js';
-
-function getEvent(ctx) {
-  return ctx.message ?? ctx.event ?? ctx.raw ?? ctx.msg ?? null;
-}
-
-function getContextInfo(message) {
-  if (!message) return null;
-  for (const key of Object.keys(message)) {
-    const node = message[key];
-    if (node && typeof node === 'object' && node.contextInfo) {
-      return node.contextInfo;
-    }
-  }
-  return null;
-}
-
-async function streamToBuffer(stream) {
-  const chunks = [];
-  for await (const chunk of stream) chunks.push(chunk);
-  return Buffer.concat(chunks);
-}
+import config from '../../config.js'
+import { resolveTargetMedia, downloadTargetBuffer, downloadUrlBuffer } from '../../lib/media.js'
+import { removeWatermark } from '../../scraper/UNWM.js'
 
 export default {
   name: 'unwm',
@@ -36,39 +13,28 @@ export default {
   description: 'Membersihkan gambar dari coretan atau watermark',
 
   async run(ctx) {
-    const event = getEvent(ctx);
-    if (!event) {
-      return ctx.reply('Gagal mendapatkan event pesan dari sistem.');
-    }
+    const { event, rawMessage, targetMessage, payload } = resolveTargetMedia(ctx)
+    if (!event) return ctx.reply('Gagal mendapatkan event pesan dari sistem.')
 
-    const rawMessage = event.message ?? event;
-    const ctxInfo = getContextInfo(rawMessage);
-    const targetMessage = ctxInfo?.quotedMessage || rawMessage;
-
-    const payload = targetMessage && resolveMediaPayload(targetMessage);
-
-    if (!payload || !payload.mimetype || !payload.mimetype.includes('image')) {
+    if (!payload?.mimetype?.includes('image')) {
       return ctx.reply(
         '✦ *IMAGE CLEANER* ✦\n\n' +
         'Kirim gambar dengan caption `.unwm` atau reply gambar dengan perintah `.unwm` untuk membersihkan watermark yang ada.'
-      );
+      )
     }
 
-    await ctx.react('⏳');
+    await ctx.react('⏳')
 
     try {
-      const stream = await downloadMediaMessage(targetMessage);
-      const imgBuffer = await streamToBuffer(stream);
-
-      const result = await JHUNWM(imgBuffer, payload.mimetype);
+      const imgBuffer = await downloadTargetBuffer(targetMessage)
+      const result = await removeWatermark(imgBuffer, payload.mimetype)
 
       if (!result.status || !result.data?.url) {
-        await ctx.react('❎');
-        return ctx.reply('❌ Gagal memproses gambar: ' + (result.error || 'Terjadi kesalahan server.'));
+        await ctx.react('❎')
+        return ctx.reply('❌ Gagal memproses gambar: ' + (result.error || 'Terjadi kesalahan server.'))
       }
 
-      const axios = (await import('axios')).default;
-      const { data: resultBuffer } = await axios.get(result.data.url, { responseType: 'arraybuffer' });
+      const resultBuffer = await downloadUrlBuffer(result.data.url, { timeout: 60_000 })
 
       const caption = [
         '┌───「 🪄 *IMAGE CLEANER* 」───┐',
@@ -77,24 +43,24 @@ export default {
         '',
         '└───────────────────────────┘',
         '',
-        '> ✨ _*Powered by FionyVerse*_'
-      ].join('\n');
+        `> ✨ _*Powered by ${config.botName}*_`
+      ].join('\n')
 
       await ctx.client.message.send(
         ctx.chat,
         {
           type: 'image',
-          media: Buffer.from(resultBuffer),
+          media: resultBuffer,
           mimetype: 'image/jpeg',
-          caption: caption
+          caption
         },
         { quote: rawMessage }
-      );
+      )
 
-      await ctx.react('✅');
+      await ctx.react('✅')
     } catch (error) {
-      await ctx.react('❎');
-      return ctx.reply('❌ Error sistem: ' + String(error.message || error).slice(0, 250));
+      await ctx.react('❎')
+      return ctx.reply('❌ Error sistem: ' + String(error.message || error).slice(0, 250))
     }
   }
-};
+}

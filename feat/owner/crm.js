@@ -1,7 +1,5 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass.
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * crm.js — CRM v3: copy raw message / relay / bedah proto.
  *
  * Mode (balas pesan target):
@@ -19,6 +17,7 @@
  *  .crm raw <json> → relay dari json tempel
  */
 import { tokenize, LANGS } from '../../lib/highlight.js'
+import { getEvent, getContextInfo } from '../../lib/media.js'
 import { proto } from 'zapo-js'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -27,18 +26,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = path.resolve(__dirname, '..', '..')
 const DB_PATH = path.join(REPO_ROOT, 'session', 'state.sqlite')
 const MAX_CODE = 60000
-
-function getEvent(ctx) {
-  return ctx.message ?? ctx.event ?? ctx.raw ?? ctx.msg ?? null
-}
-function getContextInfo(message) {
-  if (!message || typeof message !== 'object') return null
-  for (const key of Object.keys(message)) {
-    const node = message[key]
-    if (node && typeof node === 'object' && node.contextInfo) return node.contextInfo
-  }
-  return null
-}
 
 function isBytes(v) {
   return Buffer.isBuffer(v) || v instanceof Uint8Array ||
@@ -117,7 +104,7 @@ function buildCode(protoObj) {
     .map(l => (l.length ? '  ' + l : l))
     .join('\n')
   return (
-    '// FionyVerse — CRM V3 with Zapo Reference\n' +
+    '// Hitori-MD — CRM V3 with Zapo Reference\n' +
     '=> conn.relayMessage(\n' +
     '  m.chat,\n' +
     body + ',\n' +

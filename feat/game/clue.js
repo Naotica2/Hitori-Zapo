@@ -1,7 +1,5 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * clue.js — Minta clue buat game yang support (tebakkata, dll).
  * Max 2 clue per sesi: kalimat hint + underscore pattern.
  */

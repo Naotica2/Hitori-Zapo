@@ -1,10 +1,7 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass.
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * gf.js — GF (Get Feature): ambil isi file feature/code.
  *
- * [UPDATE BELOW]
  * Mode:
  *  .gf <path>           → kirim sebagai document .js, DITAMBAH tombol
  *                          "📋 Copy Code" (cta_copy) biar gak perlu download
@@ -16,7 +13,7 @@
  * Resolusi path:
  *  - Default root: feat/  →  .gf game/uno = feat/game/uno.js
  *  - Prefix lain di repo juga boleh: lib/, scraper/, core/, handlers/,
- *    src/, app.js, config.js  →  .gf lib/jhrich = lib/jhrich.js
+ *    src/, app.js, config.js  →  .gf lib/richHtml = lib/richHtml.js
  *  - Extension .js otomatis kalau gak ditulis
  *  - Fallback case-insensitive ( .gf scraper/ig-dl → scraper/IG-DL.js )
  */
@@ -148,7 +145,7 @@ const HELP =
   'Contoh:\n' +
   '`.gf game/uno`\n' +
   '`.gf game/uno --txt`\n' +
-  '`.gf lib/jhrich` → lib/jhrich.js\n' +
+  '`.gf lib/richHtml` → lib/richHtml.js\n' +
   '`.gf scraper/igdl` → case-insensitive\n\n' +
   'Extension `.js` otomatis kalau gak ditulis.'
 

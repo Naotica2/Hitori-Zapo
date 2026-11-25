@@ -1,39 +1,16 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * tiktok.js — TikTok Downloader Feature
  */
-import { JHTTDL } from '../../scraper/TIKTOK.js';
+import config from '../../config.js';
+import { extractUrlFromCtx } from '../../lib/media.js';
+import { tiktokDownload } from '../../scraper/TIKTOK.js';
 import { sendCarousel } from '../../lib/carousel.js';
 import { onRichReply } from '../../handlers/messageHandler.js';
 
 const TIKTOK_URL_REGEX = /https?:\/\/(?:(?:www|vt|vm|m)\.)?tiktok\.com\/[^\s<>"']+/i;
 const SLIDESHOW_CACHE = new Map();
 const CACHE_TTL = 10 * 60 * 1000;
-
-function extractUrl(ctx) {
-  const text = String(ctx.text || '');
-  const match = text.match(TIKTOK_URL_REGEX);
-
-  if (match) {
-    return match[0].replace(/[),.!?]+$/, '');
-  }
-
-  const quoted = ctx.message?.extendedTextMessage?.contextInfo?.quotedMessage;
-  const quotedText =
-    quoted?.conversation ||
-    quoted?.extendedTextMessage?.text ||
-    '';
-
-  const quotedMatch = quotedText.match(TIKTOK_URL_REGEX);
-
-  if (quotedMatch) {
-    return quotedMatch[0].replace(/[),.!?]+$/, '');
-  }
-
-  return null;
-}
 
 function detectMediaType(buffer, contentType, expectedType) {
   const type = String(contentType || '').toLowerCase();
@@ -199,7 +176,7 @@ function formatCaption(data) {
     '',
     '└──────────────────────────────────────┘',
     '',
-    '> ✨ _*Powered by FionyVerse*_'
+    `> ✨ _*Powered by ${config.botName}*_`
   ].join('\n');
 }
 
@@ -244,7 +221,7 @@ export default {
   description: 'Download Video atau Slideshow dari TikTok',
 
   async run(ctx) {
-    const url = extractUrl(ctx);
+    const url = extractUrlFromCtx(ctx, TIKTOK_URL_REGEX, { stripTrailing: true });
 
     if (!url) {
       return ctx.reply(
@@ -260,7 +237,7 @@ export default {
     let result;
 
     try {
-      result = await JHTTDL(url);
+      result = await tiktokDownload(url);
     } catch (error) {
       await ctx.react('❎');
       return ctx.reply(`❌ Gagal scrape: ${getErrorMessage(error)}`);

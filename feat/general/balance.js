@@ -1,7 +1,5 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * balance.js — Cek saldo: gold & gems (wallet) + XP (karakter).
  */
 import { getBalance } from '../../core/database.js'

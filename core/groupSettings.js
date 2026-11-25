@@ -1,7 +1,5 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * groupSettings.js — Settings per-grup (SQLite, key-value).
  * Fondasi sistem on/off fitur ber-permission: welcome, bye, game, antilink, dll.
  */

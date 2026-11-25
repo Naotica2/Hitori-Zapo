@@ -1,13 +1,11 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * rch.js — WhatsApp Reaction Channel engine
  */
 import axios from 'axios';
 
-export async function JHRCH(link, emoji = '❤️') {
-  const baseRes = { author_skrep: 'JH a.k.a Dhika', kesayangan: 'Fiony Alveria♡' };
+export async function reactChannelApi(link, emoji = '❤️') {
+  const baseRes = { author: 'Hitori-MD' };
   const baseUrl = 'https://reaction-whatsapp.edgeone.dev';
 
   let proxyConfig = false; 

@@ -1,126 +1,104 @@
-# JH-Base WhatsApp Bot with Zapo-JS
+# Hitori-MD
 
-Base bot WhatsApp custom di atas [Zapo-JS](https://github.com/vinikjkkj/zapo)
-(`zapo-js`) — plain JavaScript (ESM, tanpa TypeScript), feature-based, dengan
-dukungan **richMessage** (bentuk tombol & list terbaru WhatsApp).
+Bot WhatsApp modular berbasis [Zapo-JS](https://github.com/vinikjkkj/zapo)
+(`zapo-js`) — plain JavaScript (ESM), feature-based, dengan dukungan
+**richMessage** (`interactiveMessage` / `nativeFlowMessage` buttons & list),
+downloader multi-platform, sticker engine, AI tools, manajemen grup, mini-games,
+dan RPG Nusantara Wilds.
 
 Bot berjalan sebagai *companion device* (setara WhatsApp Web/Desktop): pairing
-cukup sekali lewat QR atau pairing code, kredensial tersimpan, dan sesi
-otomatis dipakai ulang di run berikutnya tanpa pairing ulang.
-
-> Base ini adalah mesin di balik bot **FionyVerse** dan masih dalam
-> pengembangan aktif — struktur serta dokumentasinya dirancang biar enak
-> dibaca, enak dikembangkan, dan enak di-deploy.
+cukup sekali lewat QR atau pairing code, kredensial tersimpan di SQLite, dan
+sesi otomatis dipakai ulang pada run berikutnya tanpa pairing ulang.
 
 ---
 
-## Kenapa ini bukan "base bot Zapo-JS" pada umumnya
+## Fitur Utama & Arsitektur
 
-Kebanyakan base cuma membungkus connect + kirim pesan. Base ini membangun
-lapisan aplikasi sendiri di atas library, dengan pembeda yang konkret:
+- **QR Banner + PNG Export.** QR tampil di terminal dengan banner kustom dan
+  opsi simpan otomatis ke `session/qr.png`.
 
-- **QR custom, bukan print terminal polos.** Banner custom + opsi auto-simpan
-  QR menjadi PNG (`session/qr.png`) — berguna kalau server gak punya terminal
-  yang enak buat scan langsung.
+- **Interactive `richMessage` & AI Rich UI.** Menggunakan `interactiveMessage`
+  + `nativeFlowMessage` (`quick_reply`, `single_select`, carousel cards) serta
+  pembaca respons tap lintas klien (termasuk `templateButtonReplyMessage`).
 
-- **richMessage, bukan button/list versi lama.** `buttonsMessage` dan
-  `listMessage` klasik makin dibatasi WhatsApp (banyak yang cuma jalan penuh
-  di akun Business API). Base ini memakai `interactiveMessage` +
-  `nativeFlowMessage` (quick_reply & single_select) — bentuk terbaru yang
-  jalan di akun biasa — lengkap dengan pembaca respons tap dari semua jalur
-  klien, termasuk `templateButtonReplyMessage` yang dipakai klien Android.
+- **Custom Pairing Code.** Mendukung pairing code 8 karakter yang dapat diatur di
+  `config.js` (charset resmi WhatsApp `1-9` dan `A-Z` tanpa `I, O, U, 0`),
+  baik mode interaktif di terminal maupun non-interaktif untuk PM2.
 
-- **Pairing code dengan code custom milik kita.** Bukan code acak server:
-  code 8 karakter diset sendiri di config sehingga origin benar-benar
-  terlihat milik kita, mengikuti charset resmi WhatsApp (`1-9`, `A-Z` tanpa
-  `I O U 0`). Tersedia mode interaktif (ditanya di terminal) dan mode
-  non-interaktif untuk PM2.
+- **Resolusi Identitas LID ↔ Nomor.** Membaca `participantAlt` /
+  `remoteJidAlt` dan memetakan LID via `getLidsByPhoneNumbers` agar sistem role
+  owner/admin dan mention tetap akurat meski pengirim memakai `@lid`.
 
-- **Resolusi identitas LID ↔ nomor.** WhatsApp sedang migrasi identitas ke
-  `@lid` demi privasi, terutama di grup. Base ini membaca field alt
-  (`participantAlt` / `remoteJidAlt`) dan memetakan LID staff lewat
-  `getLidsByPhoneNumbers`, sehingga role berbasis nomor dan mention tetap
-  akurat walau pengirim datang sebagai LID.
+- **Struktur Modular + Hot Reload.** File di `feat/` dimuat secara rekursif
+  dan dipantau otomatis oleh `chokidar`, sehingga perubahan command aktif tanpa
+  perlu restart proses bot.
 
-- **Struktur modular yang tegas.** `auth/`, `core/`, `lib/`, `handlers/`,
-  `feat/` — fitur baru gak akan mengacak-acak inti bot. Loader memindai
-  `feat/` secara rekursif dan mendaftarkan command + alias otomatis.
+- **Sticker Engine & EXIF RIFF.** Konversi gambar, GIF, video pendek, `brat`,
+  dan `smeme` menjadi WebP dengan metadata pack EXIF (`config.sticker`).
 
-- **Sistem role & permission dua lapis.** Owner/admin di level bot (config),
-  ditambah deteksi admin grup untuk command grup. User biasa tidak bisa
-  menyentuh pengaturan istimewa.
-
-- **Pengaturan per-grup + sistem nyala/mati fitur.** Berbasis SQLite; fitur
-  yang butuh izin (welcome/bye hari ini, fitur advanced seperti game/antilink
-  ke depannya) hanya bisa di-toggle per grup oleh admin grup/staff —
-  anti-spam secara desain, bukan tambalan.
-
-- **Mesin stiker karya sendiri.** Konversi gambar/GIF/video menjadi WebP
-  dengan **identitas pack (EXIF)** yang disuntik langsung ke container RIFF
-  (TIFF strict, tanpa re-encode) — stiker punya pack name & publisher, bukan
-  stiker polos tanpa asal.
-
-- **Keandalan sebagai default.** Reconnect dengan exponential backoff,
-  error handler terpusat (satu fitur error tidak mematikan bot), graceful
-  shutdown, serta proteksi anti-spam & cooldown bawaan.
-
-- **PM2-ready sejak awal.** Mode auth non-interaktif, log yang bersih dan
-  informatif, sesi persisten lintas restart.
+- **Keandalan & Keamanan.** Reconnect dengan exponential backoff, centralized
+  error handler, graceful `SIGINT` shutdown, anti-spam flood, per-command
+  cooldown, antilink per grup berbasis SQLite, serta proteksi permission owner/admin.
 
 ---
 
-## Sorotan zapo-js yang base ini manfaatkan
-
-Ringkasan library yang jadi fondasi — biar paham kenapa base ini dibangun
-di atasnya:
+## Sorotan Zapo-JS
 
 | Aspek | Penjelasan |
 | --- | --- |
-| Companion device | Terhubung seperti WhatsApp Web; kredensial Noise tersimpan dan dipakai ulang. |
-| API berbasis coordinator | Domain terpisah dan fokus: `client.auth`, `client.message`, `client.group`, `client.profile`, `client.presence`, dll. |
-| Typed events | `message`, `receipt`, `group`, `connection`, dan lainnya dengan payload yang jelas — routing pesan jadi presisi. |
-| Store fleksibel | State per-session lewat provider; base ini memakai SQLite (`@zapo-js/store-sqlite`). |
-| Media & protokol modern | Upload/download media, read receipt, reaction, hingga decrypt addon (poll vote, reaction terenkripsi). |
+| Companion device | Terhubung seperti WhatsApp Web; kredensial Noise tersimpan persisten. |
+| Coordinator API | Domain terpisah dan jelas: `client.auth`, `client.message`, `client.group`, `client.profile`, `client.presence`, `client.newsletter`, dll. |
+| Typed events | Event `message`, `receipt`, `group`, `connection`, `newsletter`, dan `message_addon`. |
+| SQLite store | Penyimpanan session, auth, Signal keys, dan chat metadata via `@zapo-js/store-sqlite`. |
+| Media streaming | Upload/download media terenkripsi, view-once unwrap, dan dekripsi addon. |
 
 ---
 
-## Struktur folder
+## Struktur Folder
 
 ```
-BotZapo/
-├── app.js                 # Entry point: pilihan auth, wiring handler, bootstrap
-├── config.js              # Seluruh pengaturan bot, terpusat satu file
+Hitori-MD/
+├── app.js                 # Entry point: auth, store, WS proxy, event wiring
+├── config.js              # Konfigurasi terpusat Hitori-MD (botName, staff, sticker, channel)
 ├── auth/                  # QR handler, pairing code, connection manager
-├── core/                  # Logger, database, cooldown, staff, context,
-│                          #   presence, group settings, permission
-├── lib/                   # Rich message builder/reader, media, mesin stiker
-├── handlers/              # Routing pesan, event grup (welcome/bye), error
-├── feat/                  # Fitur (auto-load; terorganisir per kategori)
-└── session/               # Kredensial & database (gitignored)
+├── core/                  # Logger, SQLite database, RPG engine, cooldown, staff, context, hot-reload
+├── lib/                   # Media helpers, sticker engine, richMessage, richHtml, aiRich, games
+├── handlers/              # Message router, group events, antilink, menfess, game session, error handler
+├── scraper/               # Scraper downloader & AI media tools
+├── feat/                  # Fitur command per kategori (ai, downloader, game, general, group, interactive, media, owner, rpg, sticker, tools)
+├── src/                   # Data statis RPG, reward schema, dan WebSocket media server
+└── session/               # Kredensial WA & database SQLite (gitignored)
 ```
-
-Prinsipnya: **`auth/`, `core/`, `lib/`, `handlers/` adalah dapur** — jarang
-disentuh; **`feat/` adalah etalase** — tempat fitur baru ditambah tanpa
-risiko merusak bagian lain.
 
 ---
 
-## Requirements
+## Persyaratan
 
-- Node.js >= 20
-- FFmpeg — dipakai mesin stiker untuk konversi video ke WebP animasi
+- **Node.js** `>= 20.9.0`
+- **FFmpeg** — dibutuhkan oleh sticker video, `bratvideo`, `gabungimg`, dan `tomp3`
   (`apt install -y ffmpeg` di Debian/Ubuntu)
+- **yt-dlp** *(opsional)* — dibutuhkan oleh fitur `.yta` dan `.ytv`
 
-## Instalasi
+---
+
+## Instalasi & Konfigurasi Awal
+
+1. Clone atau masuk ke direktori project, lalu install dependencies:
 
 ```bash
-git clone https://github.com/JamvanHax0r/BotZapo.git
-cd BotZapo
+cd Hitori-MD
 npm install
 ```
 
-Sesuaikan `config.js` (identitas bot, nomor staff, metode auth, identitas
-pack stiker, dll), lalu jalankan:
+2. Sesuaikan `config.js`:
+   - `staff`: masukkan nomor/LID WhatsApp kamu dengan `role: 'owner'`.
+   - `sticker`: atur `packName` dan `author` sesuai keinginan (`Hitori-MD`).
+   - `reactChannel`: isi `dedicatedChannelUrl` dengan link saluran WhatsApp milikmu
+     dan set `enabled: true` jika ingin mengaktifkan auto-react channel.
+   - *(Opsional untuk `.ai`)*: buat `config/ai/orca.js` yang mengekspor
+     `orca`, `HITORI_PERSONA`, `ORCA_CONFIG`, dan `jina`.
+
+3. Jalankan bot:
 
 ```bash
 node app.js
@@ -132,29 +110,25 @@ node app.js
 
 ### Interaktif (terminal)
 
-Jalankan `node app.js` lalu pilih metodenya:
+Jalankan `node app.js` lalu pilih metode:
 
-1. **QR Code** — QR tampil dengan banner custom; scan dari
-   WhatsApp → Perangkat tertaut. QR juga bisa disimpan sebagai PNG.
-2. **Pairing Code** — masukkan nomor tujuan; bot menampilkan code 8 karakter
-   (custom dari config). Di HP: *Perangkat tertaut → Tautkan perangkat →
-   Tautkan dengan nomor telepon* → masukkan code. Jalur ini tetap sah walau
-   push notif tidak muncul.
+1. **QR Code** — scan QR dari *WhatsApp → Perangkat tertaut*.
+2. **Pairing Code** — masukkan nomor WhatsApp target (contoh `628xxx`), lalu
+   masukkan kode 8 karakter dari terminal ke *Tautkan dengan nomor telepon*.
 
 Catatan operasional:
-
-- Pairing code punya masa berlaku singkat; base ini meminta code **setelah**
-  socket aktif agar selalu valid.
-- Jangan meminta code berulang-ulang dalam waktu singkat — WhatsApp punya
-  anti-abuse yang menekan pengiriman notif bila endpoint di-hammer.
+- Pairing code hanya direquest **sekali** setelah socket aktif agar tidak terkena
+  pembatasan anti-abuse WhatsApp.
 
 ### Non-interaktif (PM2 / server)
 
-Set di `config.js` supaya bot tidak perlu ditanya saat start:
+Atur di `config.js`:
 
 ```js
 auth: {
   method: 'pairing',
+  customCode: 'H1TR1MD8',
+  useCustomCode: true,
   pairingNumber: '628xxxxxxxxxx',
 }
 ```
@@ -165,21 +139,19 @@ auth: {
 
 ```bash
 npm install -g pm2
-pm2 start app.js --name zapo
-pm2 logs zapo            # pairing code & log live
-pm2 save && pm2 startup  # hidup otomatis saat server boot
+pm2 start app.js --name hitori-md
+pm2 logs hitori-md
+pm2 save && pm2 startup
 ```
 
-Perintah harian: `pm2 status`, `pm2 restart zapo`, `pm2 stop zapo`.
-Setelah sekali pairing sukses, restart berikutnya langsung melanjutkan sesi —
-tanpa pairing ulang.
+Perintah harian: `pm2 status`, `pm2 restart hitori-md`, `pm2 stop hitori-md`.
 
 ---
 
-## Menambah fitur
+## Menambah Fitur
 
-File `.js` di dalam `feat/` (subfolder mana pun) dimuat otomatis saat start.
-Format minimal:
+Buat file `.js` baru di dalam subfolder `feat/` (dimuat otomatis saat startup
+maupun lewat hot-reload):
 
 ```js
 export default {
@@ -188,24 +160,16 @@ export default {
   tags: 'general',
   description: 'Contoh fitur',
   async run(ctx) {
-    await ctx.reply('Halo!')
+    await ctx.reply('Halo dari Hitori-MD!')
   }
 }
 ```
 
-Objek `ctx` memberi akses rapi ke konteks pesan: `chat`, `sender`,
-`senderNumber`, `isGroup`, `isOwner`, `isAdmin`, `mentioned`, `reply()`,
-`react()`, `replyButtons()`, `replyList()`, dan lainnya — lihat
-`core/context.js` sebagai sumber kebenarannya.
+Lihat [core/context.js](./core/context.js) untuk properti dan helper `ctx` lengkap
+(`chat`, `sender`, `senderNumber`, `isGroup`, `isOwner`, `isAdmin`, `mentioned`,
+`reply()`, `react()`, `replyButtons()`, `replyList()`).
 
 ---
-
-## Status pengembangan
-
-Daftar fitur sengaja tidak dipublikasikan: base ini masih berkembang aktif
-dan sebagian fitur sudah berjalan di produksi. Dokumentasi ini berfokus pada
-arsitektur, penyesuaian, dan cara operasional — hal-hal yang stabil dan
-benar-benar berguna untuk pembaca.
 
 ## Kredit
 
@@ -214,7 +178,13 @@ benar-benar berguna untuk pembaca.
 - [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) — database SQLite
 - [pino](https://getpino.io) — logging
 - [qrcode](https://github.com/soldair/node-qrcode) — render QR
+- `@napi-rs/canvas` — canvas rendering (`smeme`, `brat`, `iqc`)
+- Upstream base: *BotZapo* (MIT License, © 2026 JamvanHax0r)
+
+---
 
 ## Lisensi
 
-MIT — © 2026 by JamvanHax0r - All Rights Reserved.
+Dilisensikan di bawah **MIT License** — lihat file [LICENSE](./LICENSE).
+Hak cipta base asli tetap dicantumkan sesuai ketentuan MIT (`© 2026 JamvanHax0r`),
+sedangkan modifikasi dan pengembangan lanjutan berada di bawah `Hitori-MD`.

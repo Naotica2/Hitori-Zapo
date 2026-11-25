@@ -1,7 +1,5 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass.
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * df.js — Delete File: hapus file fitur dari bot.
  *
  * Pakai: .df owner/xxx  (path di-root ke feat/, .js otomatis)

@@ -1,7 +1,5 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass.
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * sf.js — Save File: simpan isi pesan yg di-quote jadi file fitur.
  *
  * Pakai: kirim kode sebagai pesan → quote pesan itu → .sf owner/xxx
@@ -10,6 +8,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { extractTextFromMessage, getQuotedMessage } from '../../lib/media.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = path.resolve(__dirname, '..', '..')
@@ -18,32 +17,8 @@ const FEAT_ROOT = path.join(REPO_ROOT, 'feat')
 const BLOCKED = new Set(['app.js', 'config.js', 'package.json', 'package-lock.json', '.env'])
 const MAX_BYTES = 500 * 1024
 
-function getEvent(ctx) {
-  return ctx.message ?? ctx.event ?? ctx.raw ?? ctx.msg ?? null
-}
-
-function getContextInfo(message) {
-  if (!message) return null
-  for (const key of Object.keys(message)) {
-    const node = message[key]
-    if (node && typeof node === 'object' && node.contextInfo) return node.contextInfo
-  }
-  return null
-}
-
 function getQuotedText(ctx) {
-  const event = getEvent(ctx)
-  const raw = event?.message ?? event
-  const q = getContextInfo(raw)?.quotedMessage
-  if (!q) return ''
-  return (
-    q.conversation ||
-    q.extendedTextMessage?.text ||
-    q.imageMessage?.caption ||
-    q.videoMessage?.caption ||
-    q.documentMessage?.caption ||
-    ''
-  )
+  return extractTextFromMessage(getQuotedMessage(ctx))
 }
 
 function resolveTarget(input) {

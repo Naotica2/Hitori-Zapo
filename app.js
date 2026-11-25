@@ -1,9 +1,6 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
- * app.js — FionyVerse entry point.
- * Jantung bot! Hati2 dlm mengubah file ini!
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
+ * app.js — Hitori-MD entry point.
  */
 
 import { createMediaWsServer } from './src/ws/mediaServer.js'
@@ -17,6 +14,7 @@ import { logger, clientLogger } from './core/logger.js'
 import { setupQR } from './auth/qrHandler.js'
 import { setupPairing } from './auth/pairingHandler.js'
 import { setupConnection, markShutdown } from './auth/connectionManager.js'
+import { setupReactChannel } from './core/reactChannel.js'
 import { loadFeatures } from './feat/loader.js'
 import { setupHotReload, stopHotReload } from './core/hotReload.js'
 import { route } from './handlers/messageHandler.js'
@@ -25,6 +23,7 @@ import { setupErrorHandler } from './handlers/errorHandler.js'
 import { checkAntilink } from './handlers/antilinkHandler.js'
 import { checkGameAnswer } from './handlers/gameHandler.js'
 import { checkMenfessReply } from './handlers/menfessHandler.js'
+import { checkMinecraftAnswer } from './handlers/minecraftHandler.js'
 import { normalizeNumber, getStaffEntry } from './core/staff.js'
 import { maintenance } from './core/rpg.js'
 import { runEval } from './core/evalRunner.js'
@@ -119,7 +118,7 @@ async function chooseAuth() {
     return config.auth.pairingNumber ? 'pairing' : 'qr'
   }
 
-  console.log('\n🤖 FionyVerse — Authentication')
+  console.log(`\n🤖 ${config.botName} — Authentication`)
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   console.log('  [1] 📱 QR Code (scan dari WhatsApp)')
   console.log(`  [2] 🔑 Pairing Code (custom: ${config.auth.customCode})`)
@@ -172,6 +171,7 @@ async function main() {
   setupHotReload(client)
   setupConnection(client)
   setupGroupHandler(client)
+  setupReactChannel(client)
 
   maintenance()
   setInterval(maintenance, 6 * 60 * 60 * 1000)
@@ -182,6 +182,7 @@ async function main() {
     void checkAntilink(client, event)
     void checkGameAnswer(client, event)
     void checkMenfessReply(client, event)
+    void checkMinecraftAnswer(client, event)
     route(client, event).catch((err) => logger.error({ err }, 'Gagal memproses pesan'))
   })
 

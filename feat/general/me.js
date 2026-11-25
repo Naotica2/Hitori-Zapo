@@ -1,7 +1,5 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  */
 import { getUser, getBalance } from '../../core/database.js'
 import { getCharacter, getInventory, getActiveQuests } from '../../core/rpg.js'

@@ -1,8 +1,8 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass.
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
+ * ctest.js — Demo carousel interaktif
  */
+import config from '../../config.js'
 import { sendCarousel, IMAGE_URLS } from '../../lib/carousel.js'
 
 export default {
@@ -15,34 +15,35 @@ export default {
   async run(ctx) {
     await ctx.react('⏳')
     try {
+      const footer = `⚡ Powered by ${config.botName}`
       await sendCarousel(ctx, {
-        text: '🧪 *UJICOBA CAROUSEL BY JH*\nPilih kartu:',
+        text: `🧪 *UJICOBA CAROUSEL — ${config.botName.toUpperCase()}*\nPilih kartu:`,
         cards: [
           {
-            imageUrl: IMAGE_URLS.fiony,
-            body: '*Kartu 1 — Fiony*\nFiony Alveria, kesayangan JamvanHax0r.',
-            footer: '⚡ Powered by FionyVerse',
+            imageUrl: IMAGE_URLS.slide1,
+            body: `*Kartu 1 — ${config.botName}*\nDemo card carousel pertama.`,
+            footer,
             buttons: [
-              { type: 'url', displayText: '🌐 Buka GitHub', url: 'https://github.com/FionyBot/JH-Zapo' },
-              { type: 'reply', displayText: '👋 Sapa Fiony', id: 'rich:carousel-sapa-1' }
+              { type: 'url', displayText: '🌐 Zapo-JS Docs', url: 'https://zapo.to' },
+              { type: 'reply', displayText: '👋 Tap Kartu 1', id: 'rich:carousel-sapa-1' }
             ]
           },
           {
-            imageUrl: IMAGE_URLS.carmen,
-            body: '*Kartu 2 — Carmen*\nCarmen, karakter kedua.',
-            footer: '⚡ Powered by FionyVerse',
+            imageUrl: IMAGE_URLS.slide2,
+            body: `*Kartu 2 — ${config.botName}*\nDemo card carousel kedua.`,
+            footer,
             buttons: [
-              { type: 'url', displayText: '🌐 Buka GitHub', url: 'https://github.com/FionyBot/JH-Zapo' },
-              { type: 'reply', displayText: '👋 Sapa Carmen', id: 'rich:carousel-sapa-2' }
+              { type: 'url', displayText: '🌐 Zapo-JS Docs', url: 'https://zapo.to' },
+              { type: 'reply', displayText: '👋 Tap Kartu 2', id: 'rich:carousel-sapa-2' }
             ]
           },
           {
-            imageUrl: IMAGE_URLS.nayeon,
-            body: '*Kartu 3 — Nayeon*\nNayeon, karakter ketiga.',
-            footer: '⚡ Powered by FionyVerse',
+            imageUrl: IMAGE_URLS.slide3,
+            body: `*Kartu 3 — ${config.botName}*\nDemo card carousel ketiga.`,
+            footer,
             buttons: [
-              { type: 'url', displayText: '🌐 Buka GitHub', url: 'https://github.com/FionyBot/JH-Zapo' },
-              { type: 'reply', displayText: '👋 Sapa Nayeon', id: 'rich:carousel-sapa-3' }
+              { type: 'url', displayText: '🌐 Zapo-JS Docs', url: 'https://zapo.to' },
+              { type: 'reply', displayText: '👋 Tap Kartu 3', id: 'rich:carousel-sapa-3' }
             ]
           }
         ]

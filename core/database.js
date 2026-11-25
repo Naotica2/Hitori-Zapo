@@ -1,9 +1,6 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
- * database.js — Database abstraction untuk FionyVerse
- * [UPDATE AND FIX BELOW]
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
+ * database.js — Database abstraction untuk Hitori-MD
  *
  * Wallet reward (gold/xp/gems) = SATU dompet buat seluruh ekonomi RPG.
  */

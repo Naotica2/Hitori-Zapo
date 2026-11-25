@@ -1,17 +1,14 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * PINDL.js — Scraper Pinterest Downloader
  */
 
-export async function JHPinDL(inputUrl) {
+export async function pinDownload(inputUrl) {
   const axios = (await import('axios')).default || await import('axios');
 
   const baseRes = { 
     status: true,
-    author_skrep: 'JH a.k.a Dhika', 
-    kesayangan: 'Fiony Alveria♡',
+    author: 'Hitori-MD',
     data: {}
   };
 
@@ -19,7 +16,7 @@ export async function JHPinDL(inputUrl) {
     return { ...baseRes, status: false, error: "URL Pinterest tidak valid." };
   }
 
-  const jantung = {
+  const reqHeaders = {
     "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
     "accept-language": "en-US,en;q=0.9",
     "referer": "https://www.pinterest.com/"
@@ -30,7 +27,7 @@ export async function JHPinDL(inputUrl) {
     let pinId = (currentUrl.match(/\/pin\/(\d+)/i) || [])[1];
 
     const initialRes = await axios.get(currentUrl, { 
-      headers: jantung, 
+      headers: reqHeaders, 
       maxRedirects: 5,
       validateStatus: () => true 
     });
@@ -179,4 +176,4 @@ export async function JHPinDL(inputUrl) {
   }
 }
 
-export default JHPinDL;
+export default pinDownload;

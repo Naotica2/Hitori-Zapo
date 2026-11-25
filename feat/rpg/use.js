@@ -1,7 +1,5 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * use.js — Konsumsi item (makan/minum/oles) buat pulih instan.
  * .use tanpa argumen → langsung tampil apa aja yang bisa dikonsumsi.
  * Kalau dikonsumsi saat REST: sesi rest di-rebase biar boost langsung

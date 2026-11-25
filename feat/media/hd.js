@@ -1,33 +1,10 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * hd.js — Fitur Pembuat Foto Menjadi Lebih HD
  */
-
-import { JHImgUps } from '../../scraper/UPSCALER.js';
-import { downloadMediaMessage, resolveMediaPayload } from 'zapo-js';
-
-function getEvent(ctx) {
-  return ctx.message ?? ctx.event ?? ctx.raw ?? ctx.msg ?? null;
-}
-
-function getContextInfo(message) {
-  if (!message) return null;
-  for (const key of Object.keys(message)) {
-    const node = message[key];
-    if (node && typeof node === 'object' && node.contextInfo) {
-      return node.contextInfo;
-    }
-  }
-  return null;
-}
-
-async function streamToBuffer(stream) {
-  const chunks = [];
-  for await (const chunk of stream) chunks.push(chunk);
-  return Buffer.concat(chunks);
-}
+import config from '../../config.js'
+import { resolveTargetMedia, downloadTargetBuffer } from '../../lib/media.js'
+import { upscaleImage } from '../../scraper/UPSCALER.js'
 
 export default {
   name: 'hd',
@@ -36,35 +13,25 @@ export default {
   description: 'Meningkatkan resolusi dan kualitas gambar (HD)',
 
   async run(ctx) {
-    const event = getEvent(ctx);
-    if (!event) {
-      return ctx.reply('Gagal mendapatkan event pesan dari sistem.');
-    }
+    const { event, rawMessage, targetMessage, payload } = resolveTargetMedia(ctx)
+    if (!event) return ctx.reply('Gagal mendapatkan event pesan dari sistem.')
 
-    const rawMessage = event.message ?? event;
-    const ctxInfo = getContextInfo(rawMessage);
-    const targetMessage = ctxInfo?.quotedMessage || rawMessage;
-
-    const payload = targetMessage && resolveMediaPayload(targetMessage);
-
-    if (!payload || !payload.mimetype || !payload.mimetype.includes('image')) {
+    if (!payload?.mimetype?.includes('image')) {
       return ctx.reply(
         '✦ *HD UPSCALER* ✦\n\n' +
         'Kirim gambar dengan caption `.hd` atau reply gambar dengan perintah `.hd`'
-      );
+      )
     }
 
-    await ctx.react('⏳');
+    await ctx.react('⏳')
 
     try {
-      const stream = await downloadMediaMessage(targetMessage);
-      const imgBuffer = await streamToBuffer(stream);
-
-      const result = await JHImgUps(imgBuffer);
+      const imgBuffer = await downloadTargetBuffer(targetMessage)
+      const result = await upscaleImage(imgBuffer)
 
       if (!result.status || !result.data?.buffer) {
-        await ctx.react('❎');
-        return ctx.reply('❌ Gagal memproses gambar: ' + (result.error || 'Terjadi kesalahan dari server API.'));
+        await ctx.react('❎')
+        return ctx.reply('❌ Gagal memproses gambar: ' + (result.error || 'Terjadi kesalahan dari server API.'))
       }
 
       const caption = [
@@ -74,8 +41,8 @@ export default {
         '',
         '└──────────────────────────┘',
         '',
-        '> ✨ _*Powered by FionyVerse*_'
-      ].join('\n');
+        `> ✨ _*Powered by ${config.botName}*_`
+      ].join('\n')
 
       await ctx.client.message.send(
         ctx.chat,
@@ -83,15 +50,15 @@ export default {
           type: 'image',
           media: result.data.buffer,
           mimetype: 'image/jpeg',
-          caption: caption
+          caption
         },
         { quote: rawMessage }
-      );
+      )
 
-      await ctx.react('✅');
+      await ctx.react('✅')
     } catch (error) {
-      await ctx.react('❎');
-      return ctx.reply('❌ Error sistem: ' + String(error.message || error).slice(0, 250));
+      await ctx.react('❎')
+      return ctx.reply('❌ Error sistem: ' + String(error.message || error).slice(0, 250))
     }
   }
-};
+}

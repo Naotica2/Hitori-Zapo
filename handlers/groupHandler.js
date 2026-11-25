@@ -1,7 +1,5 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * groupHandler.js — Event grup: welcome & goodbye dengan teks custom + PP.
  * [UPDATE AND FIX BELOW]
  *

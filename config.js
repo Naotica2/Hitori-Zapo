@@ -1,28 +1,27 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
- * config.js — Centralized configuration untuk FionyVerse
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
+ * config.js — Centralized configuration untuk Hitori-MD
  */
 
 export default {
-  botName: 'FionyVerse',
+  botName: 'Hitori-MD',
 
   auth: {
-    method: 'auto',
-    customCode: 'JHXFNY48',
+    method: 'qr',
+    customCode: 'H1TR1MD8', // 8 karakter dari 1-9 & A-Z tanpa I, O, U, 0
     useCustomCode: true,
-    pairingNumber: '',
+    pairingNumber: ''
   },
 
   prefixes: ['.', '!', '/', '#', ',', '😁', '🦅'],
   mainPrefix: '.',
 
+  // Tambahkan nomor/LID owner & staff bot di sini.
+  // Contoh:
+  // { number: '628xxxxxxxxxx', role: 'owner', label: 'Owner' },
+  // { number: '628xxxxxxxxxx', lid: '123456789012345', role: 'admin', label: 'Staff Admin' },
   staff: [
-    { number: '62895405449333', role: 'owner', label: 'JamvanHax0r • Developer' },
-    { number: '13126001646', role: 'owner', label: 'JHPremix • Developer' },
-    { number: '212706611366', lid: '203186329669748', role: 'owner', label: 'Arip • Owner' },
-    { number: '6289698133663', role: 'admin', label: 'XN • Staff Admin' },
+    { number: '6285794044267', role: 'owner', label: 'Naoticaa' },
   ],
 
   // Fitur grup yang butuh on/off (permission admin/staff)
@@ -31,12 +30,12 @@ export default {
   // BLACKLIST domain antilink (default; bisa di-override per grup).
   // Selain daftar ini = boleh. Yang di daftar = dihapus.
   antilink: {
-    defaultBlacklist: 'wa.me,chat.whatsapp.com,t.me,telegram.me',
+    defaultBlacklist: 'wa.me,chat.whatsapp.com,t.me,telegram.me'
   },
 
   sticker: {
     packName: 'Made with',
-    author: 'Fiony Bot♡',
+    author: 'Hitori-MD',
     withExif: true,
     maxVideoSeconds: 10
   },
@@ -57,19 +56,19 @@ export default {
   typingPresence: true,
 
   // Hot Reload — auto reload command di feat/ tiap ada file baru/edit/hapus.
-  // Gak perlu restart bot/server, gak perlu ketik .reload manual lagi.
   hotReload: {
     enabled: true,
-    debounceMs: 400,   // jeda nunggu (ms) biar gak reload berkali-kali pas nyimpen beruntun
-    notifyOwner: true, // kirim WA ke owner tiap kali hot reload kejadian
+    debounceMs: 400,
+    notifyOwner: true
   },
 
   // React Channel — auto-react postingan baru di channel khusus bot,
   // + command .rch buat react manual ke postingan channel manapun.
+  // Isi dedicatedChannelUrl dengan link saluran WhatsApp milikmu & ubah enabled: true untuk mengaktifkan.
   reactChannel: {
-    enabled: true,
-    dedicatedChannelUrl: 'https://whatsapp.com/channel/0029Vb5blhMEawdx2QFALZ1D',
-    emojis: ['🔥', '❤️', '😍', '👍', '😂', '🥳', '💯', '✨'],
+    enabled: false,
+    dedicatedChannelUrl: '',
+    emojis: ['🔥', '❤️', '😍', '👍', '😂', '🥳', '💯', '✨']
   },
 
   messages: {
@@ -77,9 +76,9 @@ export default {
     error: '😵 Terjadi kesalahan, harap coba kembali nanti',
     ownerOnly: '🚫 Fitur ini khusus OWNER!',
     adminOnly: '🚫 Fitur ini khusus ADMIN!',
-    groupOnly: '🚫 Fitur ini khusus GRUP!',
+    groupOnly: '🚫 Fitur ini khusus GRUP!'
   },
 
   logLevel: 'info',
-  libraryLogLevel: 'error',
+  libraryLogLevel: 'error'
 }

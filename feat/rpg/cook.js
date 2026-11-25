@@ -1,7 +1,5 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * cook.js — Memasak bahan mentah jadi hidangan (restore lebih gede).
  * .cook → buku resep | .cook <id/nama> → masak
  * Hasil otomatis bisa dipakai via .use dan bisa dijual.

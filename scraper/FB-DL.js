@@ -1,11 +1,9 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass.
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * FB-DL.js — Facebook downloader scraper
  */
 
-export async function JHFBDL(fbUrl) {
+export async function fbDownload(fbUrl) {
   const axios = (await import('axios')).default
 
   if (!fbUrl || typeof fbUrl !== 'string') {
@@ -54,4 +52,4 @@ export async function JHFBDL(fbUrl) {
   return { status: true, data: { caption: title, author, media } }
 }
 
-export default JHFBDL
+export default fbDownload

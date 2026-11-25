@@ -1,10 +1,8 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass.
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * swgc.js — Posting STATUS WhatsApp yang nge-mention grup (Status Group Chat).
  */
-import { downloadMediaMessage, resolveMediaPayload } from 'zapo-js'
+import { extractTextFromMessage, resolveTargetMedia, downloadTargetBuffer } from '../../lib/media.js'
 
 const MAX_TEXT = 700
 const MAX_MEDIA_BYTES = 25 * 1024 * 1024
@@ -37,7 +35,7 @@ const COLORS = {
 }
 
 const TEMPLATES = {
-  fiony: { bg: '#E91E63', text: '#FFFFFF', font: 'script', label: 'Pink manis ala Fiony' },
+  hitori: { bg: '#E91E63', text: '#FFFFFF', font: 'script', label: 'Pink manis ala Hitori' },
   midnight: { bg: '#0D1B2A', text: '#E0E1DD', font: 'bold', label: 'Biru malam' },
   ocean: { bg: '#0077B6', text: '#FFFFFF', font: 'sistem', label: 'Biru laut' },
   sunset: { bg: '#FF6B35', text: '#FFF3E0', font: 'bold', label: 'Jingga senja' },
@@ -52,7 +50,7 @@ const DEFAULT_STYLE = { bg: '#1E88E5', text: '#FFFFFF', font: 'sistem' }
 const HELP =
   '📸 *SWGC — Status + Mention Grup*\n\n' +
   '*Teks:*\n`.swgc Halo semua!`\n' +
-  '`.swgc Halo semua! --tpl fiony`\n' +
+  '`.swgc Halo semua! --tpl hitori`\n' +
   '`.swgc Halo --bg biru --color putih --font script`\n\n' +
   '*Gambar / Video:*\n' +
   'Reply gambar/video lalu `.swgc caption kamu`,\n' +
@@ -95,25 +93,6 @@ function parseArgs(raw) {
   return { text, opts }
 }
 
-function getEvent(ctx) {
-  return ctx.message ?? ctx.event ?? ctx.raw ?? ctx.msg ?? null
-}
-
-function getContextInfo(message) {
-  if (!message || typeof message !== 'object') return null
-  for (const key of Object.keys(message)) {
-    const node = message[key]
-    if (node && typeof node === 'object' && node.contextInfo) return node.contextInfo
-  }
-  return null
-}
-
-async function streamToBuffer(stream) {
-  const chunks = []
-  for await (const chunk of stream) chunks.push(chunk)
-  return Buffer.concat(chunks)
-}
-
 export default {
   name: 'swgc',
   aliases: ['upswgc', 'swgrup', 'groupstatus'],
@@ -135,14 +114,8 @@ export default {
       return ctx.reply('⚠️ Pake di dalam grup, atau tambahin `--to <id@g.us>`.\n\n' + HELP)
     }
 
-    const event = getEvent(ctx)
-    const rawMessage = event?.message ?? event
-    const ctxInfo = getContextInfo(rawMessage)
-    const quoted = ctxInfo?.quotedMessage
-    const mediaSource = quoted || rawMessage
-    const payload = mediaSource && resolveMediaPayload(mediaSource)
-
-    const quotedText = quoted?.conversation ?? quoted?.extendedTextMessage?.text ?? ''
+    const { quoted, targetMessage: mediaSource, payload } = resolveTargetMedia(ctx)
+    const quotedText = extractTextFromMessage(quoted)
     const hasMedia = payload && ['image', 'video', 'gif'].includes(payload.mediaType)
 
     if (payload && !hasMedia) {
@@ -161,7 +134,7 @@ export default {
     try {
       let content
       if (hasMedia) {
-        const media = await streamToBuffer(await downloadMediaMessage(mediaSource))
+        const media = await downloadTargetBuffer(mediaSource)
         if (media.length > MAX_MEDIA_BYTES) {
           await ctx.react('❎')
           return ctx.reply(`⚠️ Media kegedean (${(media.length / 1024 / 1024).toFixed(1)} MB, maks ${MAX_MEDIA_BYTES / 1024 / 1024} MB).`)

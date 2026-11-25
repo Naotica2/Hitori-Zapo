@@ -1,7 +1,5 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * hidetag.js — tag senyap semua member grup, dukung quote media/teks.
  * Relay proto pesan yang di-quote apa adanya + suntik mentionedJid.
  */

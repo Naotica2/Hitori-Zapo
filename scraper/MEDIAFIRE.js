@@ -1,21 +1,19 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * MEDIAFIRE.js — Scraper Mediafire Downloader
  */
 
-export async function JHMediaFire(url) {
+export async function mediafireDownload(url) {
   const axios = (await import('axios')).default;
   const cheerio = await import('cheerio');
-  const baseRes = { status: true, author_skrep: 'JH a.k.a Dhika', kesayangan: 'Fiony Alveria♡', data: {} };
+  const baseRes = { status: true, author: 'Hitori-MD', data: {} };
 
   try {
     if (!/^https?:\/\/(www\.)?mediafire\.com\/(file|download)\//i.test(url)) {
       throw new Error('Link MediaFire tidak valid');
     }
 
-    const jantung = {
+    const reqHeaders = {
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
       'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
       'Cache-Control': 'max-age=0',
@@ -25,7 +23,7 @@ export async function JHMediaFire(url) {
     };
 
     const { data: html, request } = await axios.get(url, {
-      headers: jantung,
+      headers: reqHeaders,
       maxRedirects: 5,
       responseType: 'text',
       validateStatus: s => s >= 200 && s < 500

@@ -1,7 +1,6 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
+ * menu.js — Menu utama & kategori fitur
  */
 import config from '../../config.js'
 import { listFeatures } from '../loader.js'
@@ -18,6 +17,7 @@ const CATEGORY = {
   tools: '🛠️ TOOLS',
   media: '🎨 MEDIA',
   ai: '🤖 AI',
+  minecraft: '🧱 MINECRAFT',
   group: '👥 GROUP',
   game: '🎮 GAME',
   rpg: '🧭 RPG'
@@ -32,6 +32,7 @@ const CATEGORY_INFO = {
   tools: 'Peralatan',
   media: 'Olah Media',
   ai: 'Kecerdasan Buatan',
+  minecraft: 'Minecraft Marketplace & CurseForge Bedrock',
   group: 'Manajemen Grup',
   game: 'Game Santai Grup',
   rpg: 'Petualangan Nusantara Wilds'
@@ -50,7 +51,7 @@ function fmtUptime(ms) {
 }
 
 function footer() {
-  return `> _*Made with ♡ by JamvanHax0r*_\n> _*• ${config.botName} x Zapo-JS •*_`
+  return `> _*${config.botName} x Zapo-JS*_`
 }
 
 function regroup() {

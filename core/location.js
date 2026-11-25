@@ -1,7 +1,5 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * location.js — Location & travel logic Nusantara Wilds.
  * Travel butuh gear tertentu (obor/tali/kompas), modifier drop sesuai lokasi.
  */

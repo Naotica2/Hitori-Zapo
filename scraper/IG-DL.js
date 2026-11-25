@@ -1,11 +1,9 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass.
- * Hargai sebagaimana u mau dihargai.
- * igdl.js — Instagram downloader scraper (include thumbnail per media)
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
+ * IG-DL.js — Instagram downloader scraper
  */
 
-export async function JHIGDL(igUrl) {
+export async function igDownload(igUrl) {
   const axios = (await import('axios')).default
   const FormData = (await import('form-data')).default
 

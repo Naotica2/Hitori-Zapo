@@ -1,15 +1,14 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass.
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * ytv.js — Download video YouTube pake yt-dlp, pilih kualitas lewat tombol.
  */
 
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
+import config from '../../config.js';
 import { onRichReply } from '../../handlers/messageHandler.js';
 
-const SESSIONS = (globalThis.JH_YTV_SESSIONS ??= new Map());
+const SESSIONS = (globalThis.HITORI_YTV_SESSIONS ??= new Map());
 const PER_PAGE = 2;
 
 const QUALITY_TIERS = [
@@ -213,7 +212,7 @@ async function sendPage(ctx, page) {
   await ctx.client.message.send(ctx.chat, {
     interactiveMessage: {
       body: { text },
-      footer: { text: '🎬 FionyVerse • YouTube Downloader' },
+      footer: { text: `🎬 ${config.botName} • YouTube Downloader` },
       nativeFlowMessage: { buttons, messageVersion: 1 }
     }
   });

@@ -1,7 +1,5 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * antilinkHandler.js — Listener terpisah: hapus link yang masuk BLACKLIST.
  *
  * Link umum (IG/YT/TikTok/X/dll) = boleh. Link di blacklist

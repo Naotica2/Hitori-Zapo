@@ -1,24 +1,10 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass.
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * menfess.js — Kirim pesan anonim ke seseorang.
  */
 
+import { getEvent, getContextInfo } from '../../lib/media.js'
 import { createThread, deliverMenfess } from '../../handlers/menfessHandler.js'
-
-function getEvent(ctx) {
-  return ctx.message ?? ctx.event ?? ctx.raw ?? ctx.msg ?? null
-}
-
-function getContextInfo(message) {
-  if (!message || typeof message !== 'object') return null
-  for (const key of Object.keys(message)) {
-    const node = message[key]
-    if (node && typeof node === 'object' && node.contextInfo) return node.contextInfo
-  }
-  return null
-}
 
 function normalizeNumber(input) {
   let n = String(input).replace(/[^\d]/g, '')

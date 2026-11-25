@@ -1,15 +1,13 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass.
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * menfessHandler.js — State-machine buat thread Menfess (pesan anonim 2 arah).
  */
 
 import { onRichReply } from './messageHandler.js'
 import { reactTo } from '../core/react.js'
 
-const THREADS = (globalThis.JH_MENFESS_THREADS ??= new Map())
-const PENDING = (globalThis.JH_MENFESS_PENDING ??= new Map())  
+const THREADS = (globalThis.HITORI_MENFESS_THREADS ??= new Map())
+const PENDING = (globalThis.HITORI_MENFESS_PENDING ??= new Map())
 
 const REPLY_TIMEOUT_MS = 3 * 60 * 1000
 

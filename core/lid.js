@@ -1,7 +1,5 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * lid.js — Util resolusi LID → PN + kirim reply dengan mention rapi.
  * [FIX AND UPDATE BELOW]
  *

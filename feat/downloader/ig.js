@@ -1,28 +1,14 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass.
- * Hargai sebagaimana u mau dihargai.
- * ig.js — Instagram Downloader (video + image + carousel, mixed media LENGKAP)
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
+ * ig.js — Instagram Downloader (video + image + carousel, mixed media)
  */
-
-import { JHIGDL } from '../../scraper/IG-DL.js'
+import config from '../../config.js'
+import { extractUrlFromCtx, downloadUrlBuffer } from '../../lib/media.js'
+import { igDownload } from '../../scraper/IG-DL.js'
 import { sendCarousel } from '../../lib/carousel.js'
 import { onRichReply } from '../../handlers/messageHandler.js'
 
 const IG_URL_REGEX = /https?:\/\/(www\.)?(instagram\.com|instagr\.am)\/[^\s]+/i
-
-function extractUrl(ctx) {
-  const text = (ctx.text || '').trim()
-  const match = text.match(IG_URL_REGEX)
-  if (match) return match[0]
-
-  const quoted = ctx.message?.extendedTextMessage?.contextInfo?.quotedMessage
-  const quotedText = quoted?.conversation || quoted?.extendedTextMessage?.text || ''
-  const quotedMatch = quotedText.match(IG_URL_REGEX)
-  if (quotedMatch) return quotedMatch[0]
-
-  return null
-}
 
 function formatCaption(data, url, opts) {
   const videos = data.filter(d => d.type === 'video').length
@@ -65,26 +51,12 @@ function formatCaption(data, url, opts) {
     '',
     instruction,
     '',
-    '> ✨ _*Powered by FionyVerse*_'
+    `> ✨ _*Powered by ${config.botName}*_`
   ].join('\n')
 }
 
-async function downloadMedia(url) {
-  const axios = (await import('axios')).default
-  const { data: buffer } = await axios.get(url, {
-    responseType: 'arraybuffer',
-    timeout: 60000,
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.7871.181 Mobile Safari/537.36'
-    }
-  })
-  const buf = Buffer.from(buffer)
-  if (!buf.length) throw new Error('Empty buffer dari URL media')
-  return buf
-}
-
 async function sendVideo(ctx, media, caption) {
-  const videoBuffer = await downloadMedia(media.url)
+  const videoBuffer = await downloadUrlBuffer(media.url)
   await ctx.client.message.send(ctx.chat, {
     type: 'video',
     media: videoBuffer,
@@ -94,7 +66,7 @@ async function sendVideo(ctx, media, caption) {
 }
 
 async function sendSingleImage(ctx, media, caption) {
-  const imageBuffer = await downloadMedia(media.url)
+  const imageBuffer = await downloadUrlBuffer(media.url)
   await ctx.client.message.send(ctx.chat, {
     type: 'image',
     media: imageBuffer,
@@ -142,7 +114,7 @@ export default {
   description: 'Downloader Instagram',
 
   async run(ctx) {
-    const url = extractUrl(ctx)
+    const url = extractUrlFromCtx(ctx, IG_URL_REGEX)
 
     if (!url) {
       return ctx.reply(
@@ -168,7 +140,7 @@ export default {
 
     let result
     try {
-      result = await JHIGDL(url)
+      result = await igDownload(url)
     } catch (e) {
       await ctx.react('❎')
       return ctx.reply('❌ Gagal scrape: ' + String(e.message || e).slice(0, 200))

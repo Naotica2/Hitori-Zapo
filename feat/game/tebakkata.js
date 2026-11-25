@@ -1,7 +1,5 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * tebakkata.js — tebak kata berpetunjuk, 60 detik, support clue.
  * Bank kata besar dan bervariasi dari level mudah → expert.
  */

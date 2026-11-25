@@ -1,17 +1,8 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass.
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * reactChannel.js — Auto-react ke postingan baru di channel khusus bot
  * (config.reactChannel.dedicatedChannelUrl). Begitu ada post baru, bot
  * otomatis kasih reaction emoji random ke situ.
- *
- * CATATAN JUJUR: zapo-js belum dokumentasiin persis bentuk field di dalam
- * event 'newsletter' (nama field JID & serverId-nya). Kode di bawah nyoba
- * beberapa kemungkinan nama field yang lazim, DAN nge-log bentuk mentah
- * event-nya sekali di awal biar gampang di-debug kalau ternyata meleset —
- * tinggal cek log pas post pertama nongol, kirim ke gue kalau perlu
- * disesuaikan.
  */
 import { logger } from './logger.js'
 import config from '../config.js'

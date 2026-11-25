@@ -1,7 +1,5 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * grant.js — Stub function buat grant reward.
  * Sekarang cuma LOG, belum aktif — siap dipanggil pas RPG ada (soon).
  */

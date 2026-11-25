@@ -1,8 +1,7 @@
 /**
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * pairingHandler.js — Pairing code flow, minimal & anti-spam.
  * SATU request per run (anti-abuse WA suppress notif kalau di-hammer).
- *
- * Thanks to XN for helping this. 
  */
 import config from '../config.js'
 import { logger } from '../core/logger.js'
@@ -14,7 +13,7 @@ function validateCode(raw) {
   if (!CODE_PATTERN.test(code)) {
     logger.error(
       `❌ customCode "${raw}" tidak valid. ` +
-      `Harus 8 karakter dari 1-9 & A-Z tanpa I, O, U, 0. Contoh: JHXFNY48`
+      `Harus 8 karakter dari 1-9 & A-Z tanpa I, O, U, 0. Contoh: H1TR1MD8`
     )
     return null
   }

@@ -1,100 +1,11 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * smeme.js — Bikin Gambar Menjadi Stiker Meme
- *
- * Thanks to XN for helping this. 
  */
-
-import { downloadMediaMessage, resolveMediaPayload } from 'zapo-js';
 import { loadImage, createCanvas } from '@napi-rs/canvas';
-
-function getEvent(ctx) {
-  return ctx.message ?? ctx.event ?? ctx.raw ?? ctx.msg ?? null;
-}
-
-function getContextInfo(message) {
-  if (!message) return null;
-  for (const key of Object.keys(message)) {
-    const node = message[key];
-    if (node && typeof node === 'object' && node.contextInfo) {
-      return node.contextInfo;
-    }
-  }
-  return null;
-}
-
-async function streamToBuffer(stream) {
-  const chunks = [];
-  for await (const chunk of stream) {
-    chunks.push(chunk);
-  }
-  return Buffer.concat(chunks);
-}
-
-async function writeExifWebp(webpBuffer, packname, author) {
-  const json = {
-    'sticker-pack-id': 'fionyverse-smeme',
-    'sticker-pack-name': packname,
-    'sticker-pack-publisher': author,
-    emojis: ['😘']
-  };
-
-  const exifAttr = Buffer.from([
-    0x49, 0x49, 0x2A, 0x00, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x41, 0x57,
-    0x07, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16, 0x00, 0x00, 0x00
-  ]);
-
-  const jsonBuf = Buffer.from(JSON.stringify(json), 'utf-8');
-  const exif = Buffer.concat([exifAttr, jsonBuf]);
-
-  exif.writeUIntLE(jsonBuf.length, 14, 4);
-
-  const padding = Buffer.alloc(exif.length % 2 === 1 ? 1 : 0);
-  const exifChunk = Buffer.alloc(8 + exif.length + padding.length);
-
-  exifChunk.write('EXIF', 0);
-  exifChunk.writeUInt32LE(exif.length, 4);
-  exif.copy(exifChunk, 8);
-
-  if (padding.length > 0) {
-    padding.copy(exifChunk, 8 + exif.length);
-  }
-
-  const vp8xIndex = webpBuffer.indexOf(Buffer.from('VP8X', 'ascii'));
-
-  if (vp8xIndex === -1) {
-    const vp8xChunk = Buffer.from([
-      0x56, 0x50, 0x38, 0x58, 0x0A, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00,
-      0xFF, 0x01, 0x00, 0xFF, 0x01, 0x00
-    ]);
-
-    const newRiffSize = webpBuffer.length - 8 + 18 + exifChunk.length;
-    const header = Buffer.alloc(12);
-
-    header.write('RIFF', 0);
-    header.writeUInt32LE(newRiffSize, 4);
-    header.write('WEBP', 8);
-
-    return Buffer.concat([
-      header,
-      vp8xChunk,
-      webpBuffer.slice(12),
-      exifChunk
-    ]);
-  }
-
-  webpBuffer[vp8xIndex + 8] |= 0x08;
-
-  const originalRiffSize = webpBuffer.readUInt32LE(4);
-  webpBuffer.writeUInt32LE(originalRiffSize + exifChunk.length, 4);
-
-  return Buffer.concat([
-    webpBuffer,
-    exifChunk
-  ]);
-}
+import config from '../../config.js';
+import { resolveTargetMedia, downloadTargetBuffer } from '../../lib/media.js';
+import { applyStickerExif } from '../../lib/sticker.js';
 
 function isEmojiSegment(segment) {
   return /[\p{Extended_Pictographic}\p{Regional_Indicator}]/u.test(segment);
@@ -211,19 +122,11 @@ export default {
   description: 'Bikin stiker meme dari gambar (.smeme atas | bawah)',
 
   async run(ctx) {
-    const event = getEvent(ctx);
+    const { event, rawMessage, targetMessage, payload } = resolveTargetMedia(ctx);
 
     if (!event) {
       return ctx.reply('Gagal mendapatkan event pesan dari sistem.');
     }
-
-    const rawMessage = event.message ?? event;
-    const ctxInfo = getContextInfo(rawMessage);
-    const targetMessage = ctxInfo?.quotedMessage || rawMessage;
-
-    const payload = targetMessage
-      ? resolveMediaPayload(targetMessage)
-      : null;
 
     if (
       !payload ||
@@ -243,7 +146,7 @@ export default {
 
     if (!text) {
       return ctx.reply(
-        'Teksnya mana Kak? Contoh: *.smeme Fiony🥰 | Kesayangan JH*'
+        `Teksnya mana Kak? Contoh: *.smeme ${config.botName} | Bot WhatsApp*`
       );
     }
 
@@ -262,8 +165,7 @@ export default {
     await ctx.react('⏳');
 
     try {
-      const stream = await downloadMediaMessage(targetMessage);
-      const imgBuffer = await streamToBuffer(stream);
+      const imgBuffer = await downloadTargetBuffer(targetMessage);
 
       const rawWebp = await createMeme(
         imgBuffer,
@@ -271,11 +173,12 @@ export default {
         bottomText
       );
 
-      const finalSticker = await writeExifWebp(
-        rawWebp,
-        'Made with',
-        'Fiony Bot♡'
-      );
+      const finalSticker = applyStickerExif(rawWebp, {
+        packName: config.sticker.packName,
+        author: config.sticker.author,
+        packId: 'hitori-smeme',
+        emojis: ['✨']
+      });
 
       await ctx.client.message.send(
         ctx.chat,

@@ -1,7 +1,5 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass.
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * backup.js — Owner-only: zip seluruh source project pake binary `zip`
  */
 import { exec } from 'node:child_process'
@@ -51,7 +49,7 @@ export default {
     }
     isBackingUp = true
 
-    const fileName = `FVerse-${formatTanggal()}.zip`
+    const fileName = `HitoriMD-${formatTanggal()}.zip`
     const filePath = join(ROOT_DIR, fileName)
 
     await ctx.react('🗂️').catch(() => {})

@@ -1,11 +1,9 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass.
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * THREADS.js — Threads downloader scraper
  */
 
-export async function JHThreadsDL(threadsUrl) {
+export async function threadsDownload(threadsUrl) {
   const axios = (await import('axios')).default
 
   if (!threadsUrl || typeof threadsUrl !== 'string') {
@@ -59,4 +57,4 @@ export async function JHThreadsDL(threadsUrl) {
   }
 }
 
-export default JHThreadsDL
+export default threadsDownload

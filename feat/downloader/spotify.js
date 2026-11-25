@@ -1,14 +1,13 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * spotify.js — Search dan Download lagu dari Spotify
  */
+import config from '../../config.js'
+import { downloadUrlBuffer } from '../../lib/media.js'
+import { onRichReply } from '../../handlers/messageHandler.js'
+import { spotifySearch, spotifyDownload, spotiDownFallback } from '../../scraper/SPOTIFY.js'
 
-import { onRichReply } from '../../handlers/messageHandler.js';
-import { JHSpotSearch, JHSpotDL, JHSDown } from '../../scraper/SPOTIFY.js';
-
-const SESSIONS = (globalThis.JH_SPOTIFY_SESSIONS ??= new Map());
+const SESSIONS = (globalThis.HITORI_SPOTIFY_SESSIONS ??= new Map())
 const PER_PAGE = 3;
 const LINE = '━━━━━━━━━━━━━━━━━━━━';
 
@@ -18,16 +17,15 @@ const cut = (s, n) => {
 };
 
 async function processDownload(ctx, url, metaData = null) {
-  const axios = (await import('axios')).default;
   const rawMessage = ctx.message || ctx.raw;
 
   await ctx.react('⏳');
   
   try {
-    let res = await JHSpotDL(url);
+    let res = await spotifyDownload(url);
     
     if (!res.status || !res.data?.download_url) {
-      res = await JHSDown(url);
+      res = await spotiDownFallback(url);
     }
 
     if (!res.status || !res.data?.download_url) {
@@ -48,12 +46,11 @@ async function processDownload(ctx, url, metaData = null) {
       `*Link:* ${url}\n\n` +
       `> Downloading audio...`;
 
-    let coverBuffer = null;
-    if (metaData && metaData.cover) {
+    let coverBuffer = null
+    if (metaData?.cover) {
       try {
-        const imgRes = await axios.get(metaData.cover, { responseType: 'arraybuffer' });
-        coverBuffer = Buffer.from(imgRes.data);
-      } catch (e) {}
+        coverBuffer = await downloadUrlBuffer(metaData.cover, { timeout: 30_000 })
+      } catch {}
     }
 
     if (coverBuffer) {
@@ -71,13 +68,13 @@ async function processDownload(ctx, url, metaData = null) {
       await ctx.reply(caption);
     }
 
-    const { data: audioBuffer } = await axios.get(res.data.download_url, { responseType: 'arraybuffer' });
+    const audioBuffer = await downloadUrlBuffer(res.data.download_url, { timeout: 120_000 })
 
     await ctx.client.message.send(
       ctx.chat,
       {
         type: 'audio',
-        media: Buffer.from(audioBuffer),
+        media: audioBuffer,
         mimetype: 'audio/mpeg',
         ptt: false,
         fileName: `${title}.mp3`
@@ -177,7 +174,7 @@ async function sendPage(ctx, page) {
   await ctx.client.message.send(ctx.chat, {
     interactiveMessage: {
       body: { text },
-      footer: { text: '🎧 FionyVerse • Spotify Downloader' },
+      footer: { text: `🎧 ${config.botName} • Spotify Downloader` },
       nativeFlowMessage: { buttons, messageVersion: 1 }
     }
   });
@@ -211,7 +208,7 @@ export default {
     await ctx.react('⏳');
     
     try {
-      const searchRes = await JHSpotSearch(query);
+      const searchRes = await spotifySearch(query);
       if (!searchRes.status || !searchRes.data?.tracks?.length) {
         await ctx.react('❎');
         return ctx.reply('❌ Lagu tidak ditemukan: ' + (searchRes.error || 'Pencarian kosong.'));

@@ -1,19 +1,16 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * RMBG.js — Scraper Remove Background
  */
 
-export async function JHRMBG(imgBuffer, mime = 'image/jpeg') {
+export async function removeBg(imgBuffer, mime = 'image/jpeg') {
   const axios = (await import('axios')).default;
   const FormData = (await import('form-data')).default;
   const crypto = (await import('crypto')).default;
 
   const baseRes = {
     status: true,
-    author_skrep: 'JH a.k.a Dhika',
-    kesayangan: 'Fiony Alveria♡',
+    author: 'Hitori-MD',
     data: {}
   };
 
@@ -75,4 +72,4 @@ export async function JHRMBG(imgBuffer, mime = 'image/jpeg') {
   }
 }
 
-export default JHRMBG;
+export default removeBg;

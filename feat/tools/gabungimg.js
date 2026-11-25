@@ -1,46 +1,12 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass.
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * gabungimg.js — Gabung Dua Gambar (Vertical / Horizontal)
  */
 import { spawn } from 'node:child_process'
 import sizeOf from 'image-size'
-import { downloadMediaMessage, resolveMediaPayload } from 'zapo-js'
+import { resolveTargetMedia, tryDownloadImageBuffer } from '../../lib/media.js'
 
-const MEM = (globalThis.JH_GABUNGIMG_MEM ??= new Map())
-
-function getEvent(ctx) {
-  return ctx.message ?? ctx.event ?? ctx.raw ?? ctx.msg ?? null
-}
-
-function getContextInfo(message) {
-  if (!message || typeof message !== 'object') return null
-  for (const key of Object.keys(message)) {
-    const node = message[key]
-    if (node && typeof node === 'object' && node.contextInfo) return node.contextInfo
-  }
-  return null
-}
-
-async function streamToBuffer(stream) {
-  const chunks = []
-  for await (const chunk of stream) chunks.push(chunk)
-  return Buffer.concat(chunks)
-}
-
-async function extractImageBuffer(message) {
-  if (!message) return null
-  try {
-    const payload = resolveMediaPayload(message)
-    if (!payload || !payload.mimetype || !String(payload.mimetype).startsWith('image/')) return null
-    const stream = await downloadMediaMessage(message)
-    const buf = await streamToBuffer(stream)
-    return buf?.length ? buf : null
-  } catch (e) {
-    return null
-  }
-}
+const MEM = (globalThis.HITORI_GABUNGIMG_MEM ??= new Map())
 
 const processFfmpeg = (img1, img2, filter) => {
   return new Promise((resolve, reject) => {
@@ -87,13 +53,10 @@ export default {
       return ctx.reply('🗑️ Sesi gabung gambar dibatalkan.')
     }
 
-    const event = getEvent(ctx)
-    const rawMessage = event?.message ?? event
-    const ctxInfo = getContextInfo(rawMessage)
-    const quoted = ctxInfo?.quotedMessage ?? null
+    const { rawMessage, quoted } = resolveTargetMedia(ctx)
 
-    const quotedBuf = await extractImageBuffer(quoted)
-    const attachedBuf = await extractImageBuffer(rawMessage)
+    const quotedBuf = await tryDownloadImageBuffer(quoted)
+    const attachedBuf = await tryDownloadImageBuffer(rawMessage)
     const imgBuf = quotedBuf || attachedBuf
 
     if (!imgBuf) {

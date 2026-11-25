@@ -1,18 +1,15 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * UPSCALER.js — Scraper HD Image/Photo
  */
 
-export async function JHImgUps(imgBuffer) {
+export async function upscaleImage(imgBuffer) {
   const axios = (await import('axios')).default || await import('axios');
   const FormData = (await import('form-data')).default || await import('form-data');
 
   const baseRes = { 
     status: true,
-    author_skrep: 'JH a.k.a Dhika', 
-    kesayangan: 'Fiony Alveria♡',
+    author: 'Hitori-MD',
     data: {}
   };
 
@@ -29,7 +26,7 @@ export async function JHImgUps(imgBuffer) {
   };
 
   try {
-    const fileName = `Fiony_${Math.floor(1000 + Math.random() * 9000)}.jpg`;
+    const fileName = `Hitori_${Math.floor(1000 + Math.random() * 9000)}.jpg`;
     const form1 = new FormData();
     form1.append('file_name', fileName);
 
@@ -120,4 +117,4 @@ export async function JHImgUps(imgBuffer) {
   }
 }
 
-export default JHImgUps;
+export default upscaleImage;

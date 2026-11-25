@@ -1,7 +1,5 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass.
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * hotReload.js — Watch folder feat/, auto panggil loadFeatures() begitu ada
  * file yang ditambah/diedit/dihapus. Gak perlu ketik .reload manual lagi,
  * dan gak perlu restart bot/session WA sama sekali.
@@ -107,7 +105,6 @@ async function runReload() {
 }
 
 /**
- * JH — FIONY
  * Nyalain watcher. Panggil sekali di app.js setelah loadFeatures() pertama.
  * @param {import('zapo-js').WaClient} client - dipakai buat notif owner (opsional)
  */

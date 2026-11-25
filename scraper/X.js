@@ -1,13 +1,11 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * X.js — Scraper Twitter/X Downloader
  */
 
-export async function JHTwitter(targetUrl) {
+export async function twitterDownload(targetUrl) {
   const axios = (await import('axios')).default;
-  const baseRes = { status: true, author_skrep: 'JH a.k.a Dhika', kesayangan: 'Fiony Alveria♡', data: { title: '', videos: [], images: [] } };
+  const baseRes = { status: true, author: 'Hitori-MD', data: { title: '', videos: [], images: [] } };
 
   try {
     const { data: taskData } = await axios.post('https://cap.jhx.my.id/api/createTask', {

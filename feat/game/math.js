@@ -1,7 +1,5 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * math.js — kuis matematika acak, 60 detik, tanpa API eksternal.
  */
 import { isOn } from '../../core/groupSettings.js'

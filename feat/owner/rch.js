@@ -1,7 +1,5 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass.
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * rch.js — Owner-only: react manual ke postingan channel WA MANAPUN,
  * cukup paste link postingannya (gak perlu follow dulu).
  * Contoh: .rch https://whatsapp.com/channel/xxxxxxxx/1958

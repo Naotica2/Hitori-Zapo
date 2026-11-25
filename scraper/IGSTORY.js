@@ -1,14 +1,12 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * IGSTORY.js — Scraper IGStory Downloader with Username
  */
 
-export async function JHIGStory(targetUser) {
+export async function igStoryDownload(targetUser) {
   const axios = (await import('axios')).default;
   const crypto = (await import('crypto')).default;
-  const baseRes = { status: true, author_skrep: 'JH a.k.a Dhika', kesayangan: 'Fiony Alveria♡', data: { username: '', stories: [] } };
+  const baseRes = { status: true, author: 'Hitori-MD', data: { username: '', stories: [] } };
 
   if (!targetUser) {
     return { ...baseRes, status: false, error: 'Sertakan username IG yang mau diambil story-nya!' };
@@ -22,7 +20,7 @@ export async function JHIGStory(targetUser) {
     }, { headers: { 'Content-Type': 'application/json' } });
 
     if (!taskData.success || !taskData.jobId) {
-      throw new Error("Gagal membuat antrean bypass Turnstile dari server JHCap.");
+      throw new Error("Gagal membuat antrean bypass Turnstile dari server.");
     }
 
     for (let i = 0; i < 20; i++) {

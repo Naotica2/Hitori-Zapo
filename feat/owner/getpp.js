@@ -1,22 +1,8 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass.
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * getpp.js — Ambil foto profile resolusi penuh.
  */
-
-function getEvent(ctx) {
-  return ctx.message ?? ctx.event ?? ctx.raw ?? ctx.msg ?? null
-}
-
-function getContextInfo(message) {
-  if (!message || typeof message !== 'object') return null
-  for (const key of Object.keys(message)) {
-    const node = message[key]
-    if (node && typeof node === 'object' && node.contextInfo) return node.contextInfo
-  }
-  return null
-}
+import { getEvent, getContextInfo, downloadUrlBuffer } from '../../lib/media.js'
 
 function normalizeNumber(input) {
   let n = String(input).replace(/[^\d]/g, '')
@@ -138,9 +124,7 @@ export default {
         return ctx.reply('⚠️ Foto profile target gak tersedia — kemungkinan private atau belum pernah pasang PP.')
       }
 
-      const res = await fetch(pic.url)
-      if (!res.ok) throw new Error('HTTP ' + res.status)
-      const buf = Buffer.from(await res.arrayBuffer())
+      const buf = await downloadUrlBuffer(pic.url)
 
       await ctx.client.message.send(ctx.chat, {
         type: 'image',

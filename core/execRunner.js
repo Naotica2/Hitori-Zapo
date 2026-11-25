@@ -1,7 +1,5 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * execRunner.js — Logic exec shell command untuk owner (trigger: `$ command`).
  * Sengaja dipisah dari handler biar bisa di-test & dipakai ulang.
  */

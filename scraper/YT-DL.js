@@ -142,4 +142,4 @@ class YouTubeDownloader {
   }
 }
 
-export const jhydl = new YouTubeDownloader();
+export const ytdl = new YouTubeDownloader();

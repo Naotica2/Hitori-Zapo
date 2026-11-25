@@ -1,8 +1,6 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass.
- * Hargai sebagaimana u mau dihargai.
- * iqc.js — iPhone Quote Chat maker. Render origins by JAMVANHAX0R — FIONY BOT.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
+ * iqc.js — iPhone Quote Chat maker.
  */
 
 import { generateIqc } from '../../lib/iqcGenerator.js';
@@ -30,14 +28,14 @@ export default {
         '✦ *iPhone Quote Chat* ✦\n\n' +
         'Cara pake:\n*.iqc <teks>*\n' +
         'Custom jam:\n*.iqc <teks>|<chatTime>|<statusBarTime>*\n\n' +
-        'Contoh:\n.iqc Fiony cantik\n.iqc Fiony cantik|22:11|22:20'
+        'Contoh:\n.iqc Halo Hitori\n.iqc Halo Hitori|22:11|22:20'
       );
     }
 
     const { text, chatTime, statusBarTime } = parseArgs(raw);
     
     if (!text) {
-      return ctx.reply('Teksnya mana? Contoh: *.iqc Fiony cantik*');
+      return ctx.reply('Teksnya mana? Contoh: *.iqc Halo Hitori*');
     }
 
     await ctx.react('⏳');

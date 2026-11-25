@@ -1,12 +1,10 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * pinterest.js — Pinterest Search Feature
  */
-
-import { JHPin } from '../../scraper/PINSEARCH.js';
-import { sendCarousel } from '../../lib/carousel.js';
+import config from '../../config.js'
+import { pinSearch } from '../../scraper/PINSEARCH.js'
+import { sendCarousel } from '../../lib/carousel.js'
 
 export default {
   name: 'pinterest',
@@ -15,33 +13,33 @@ export default {
   description: 'Mencari gambar dari Pinterest',
 
   async run(ctx) {
-    const query = (ctx.text || '').trim();
+    const query = (ctx.text || '').trim()
 
     if (!query) {
       return ctx.reply(
         '✦ *PINTEREST SEARCH* ✦\n\n' +
         'Kirim perintah beserta query pencarian.\n\n' +
         '*Contoh:*\n' +
-        '`.pin Fiony JKT48`'
-      );
+        '`.pin Anime Aesthetic`'
+      )
     }
 
-    await ctx.react('⏳');
+    await ctx.react('⏳')
 
-    let result;
+    let result
     try {
-      result = await JHPin(query, 10);
+      result = await pinSearch(query, 10)
     } catch (e) {
-      await ctx.react('❎');
-      return ctx.reply('❌ Gagal scrape: ' + String(e.message || e).slice(0, 200));
+      await ctx.react('❎')
+      return ctx.reply('❌ Gagal scrape: ' + String(e.message || e).slice(0, 200))
     }
 
     if (!result.status || !result.data || result.data.images.length === 0) {
-      await ctx.react('❎');
-      return ctx.reply('❌ Pencarian gagal: ' + (result.error || 'Gambar tidak ditemukan.'));
+      await ctx.react('❎')
+      return ctx.reply('❌ Pencarian gagal: ' + (result.error || 'Gambar tidak ditemukan.'))
     }
 
-    const data = result.data;
+    const data = result.data
 
     try {
       const cards = data.images.map((imgUrl, index) => ({
@@ -51,7 +49,7 @@ export default {
         buttons: [
           { type: 'url', displayText: '🌐 Buka Gambar Asli', url: imgUrl }
         ]
-      }));
+      }))
 
       const textCaption = [
         '┌───「 📌 *PINTEREST SEARCH* 」───┐',
@@ -61,18 +59,18 @@ export default {
         '',
         '└──────────────────────────────────────┘',
         '',
-        '> ✨ _*Powered by FionyVerse*_'
-      ].join('\n');
+        `> ✨ _*Powered by ${config.botName}*_`
+      ].join('\n')
 
       await sendCarousel(ctx, {
         text: textCaption,
         cards
-      });
+      })
 
-      await ctx.react('✅');
+      await ctx.react('✅')
     } catch (e) {
-      await ctx.react('❎');
-      return ctx.reply('❌ Error mengirim carousel: ' + String(e.message || e).slice(0, 250));
+      await ctx.react('❎')
+      return ctx.reply('❌ Error mengirim carousel: ' + String(e.message || e).slice(0, 250))
     }
   }
-};
+}

@@ -1,26 +1,12 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass.
- * Hargai sebagaimana u mau dihargai.
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * fb.js — Facebook Downloader
  */
-
-import { JHFBDL } from '../../scraper/FB-DL.js'
+import config from '../../config.js'
+import { extractUrlFromCtx, downloadUrlBuffer } from '../../lib/media.js'
+import { fbDownload } from '../../scraper/FB-DL.js'
 
 const FB_URL_REGEX = /https?:\/\/(www\.|m\.|web\.)?(facebook\.com|fb\.watch)\/[^\s]+/i
-
-function extractUrl(ctx) {
-  const text = (ctx.text || '').trim()
-  const match = text.match(FB_URL_REGEX)
-  if (match) return match[0]
-
-  const quoted = ctx.message?.extendedTextMessage?.contextInfo?.quotedMessage
-  const quotedText = quoted?.conversation || quoted?.extendedTextMessage?.text || ''
-  const quotedMatch = quotedText.match(FB_URL_REGEX)
-  if (quotedMatch) return quotedMatch[0]
-
-  return null
-}
 
 function cleanText(value, fallback = '-') {
   if (!value) return fallback
@@ -47,22 +33,8 @@ function formatCaption(data, media, url) {
     '',
     '🎬 *Video Facebook siap didownload.*',
     '',
-    '> ✨ _*Powered by FionyVerse*_'
+    `> ✨ _*Powered by ${config.botName}*_`
   ].join('\n')
-}
-
-async function downloadMedia(url) {
-  const axios = (await import('axios')).default
-  const { data: buffer } = await axios.get(url, {
-    responseType: 'arraybuffer',
-    timeout: 120000,
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.7871.181 Mobile Safari/537.36'
-    }
-  })
-  const buf = Buffer.from(buffer)
-  if (!buf.length) throw new Error('Empty buffer dari URL media')
-  return buf
 }
 
 export default {
@@ -72,7 +44,7 @@ export default {
   description: 'Download Facebook video (HD quality)',
 
   async run(ctx) {
-    const url = extractUrl(ctx)
+    const url = extractUrlFromCtx(ctx, FB_URL_REGEX)
 
     if (!url) {
       return ctx.reply(
@@ -87,7 +59,7 @@ export default {
 
     let result
     try {
-      result = await JHFBDL(url)
+      result = await fbDownload(url)
     } catch (e) {
       await ctx.react('❎')
       return ctx.reply('❌ Gagal scrape: ' + String(e.message || e).slice(0, 200))
@@ -102,7 +74,7 @@ export default {
     const hdMedia = data.media.find((m) => m.quality === 'HD') || data.media[0]
 
     try {
-      const videoBuffer = await downloadMedia(hdMedia.url)
+      const videoBuffer = await downloadUrlBuffer(hdMedia.url, { timeout: 120_000 })
       await ctx.client.message.send(ctx.chat, {
         type: 'video',
         media: videoBuffer,

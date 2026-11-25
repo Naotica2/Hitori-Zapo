@@ -1,12 +1,10 @@
 /**
- * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass.
- * Hargai sebagaimana u mau dihargai.
- * aurora.js — AURORA DECK: "AURORA — UR SPECIAL PLAYER"
+ * © Hitori-MD — WhatsApp Bot on Zapo-JS
+ * aurora.js — AURORA DECK: Music & Video Player
  */
 
 import config from '../../config.js';
-import { sendRichJH } from '../../lib/jhrich.js';
+import { sendRichHtml } from '../../lib/richHtml.js';
 
 const API_BASE = 'https://api.jhx.my.id';
 const API_HEADERS = {
@@ -441,17 +439,7 @@ display:inline-block;
 color:#ff4d6d;
 animation:beat 1.1s ease-in-out infinite
 }
-.jh{
-font-weight:800;
-background:linear-gradient(90deg,#00ff88,#22d3ee,#7dd3fc,#00ff88);
-background-size:300% 100%;
--webkit-background-clip:text;
-background-clip:text;
--webkit-text-fill-color:transparent;
-color:transparent;
-animation:shine 5s linear infinite
-}
-.fiony{
+.brand{
 font-weight:800;
 background:linear-gradient(90deg,#22d3ee,#818cf8,#00ff88,#22d3ee);
 background-size:300% 100%;
@@ -617,9 +605,8 @@ to{background-position:300% 0}
 		</div>
 
 		<div class="aurora-foot">
-			<div class="made">Made with <span class="heart">❤</span> by <span class="jh">JamvanHax0r</span></div>
-			<div class="powered">Powered by <span class="fiony">FionyVerse</span></div>
-			<div class="copy">© <span id="year"></span> - All Rights Reserved</div>
+			<div class="powered">Powered by <span class="brand">${config.botName}</span></div>
+			<div class="copy">© <span id="year"></span> - ${config.botName}</div>
 		</div>
 	</div>
 
@@ -991,11 +978,11 @@ export default {
     try {
       let info;
       if (/^https?:\/\//i.test(query)) {
-        info = { url: query, title: 'Aurora Stream', artist: 'FionyVerse Stream', thumbnail: '' };
+        info = { url: query, title: 'Aurora Stream', artist: `${config.botName} Stream`, thumbnail: '' };
       } else {
         const results = await ytSearch(query);
         const v = results[0];
-        info = { url: v.url, title: v.title || 'Unknown', artist: v.artist || 'FionyVerse Stream', thumbnail: v.thumbnail || '' };
+        info = { url: v.url, title: v.title || 'Unknown', artist: v.artist || `${config.botName} Stream`, thumbnail: v.thumbnail || '' };
       }
       if (!info?.url) throw new Error('URL YouTube gak ketemu');
 
@@ -1011,9 +998,9 @@ export default {
 
       const htmlPayload = buildHtml({ finalTitle, finalChannel, finalDuration, videoUrl: data.url, thumbnailb64, wsUrl });
 
-      const sent = await sendRichJH(ctx, htmlPayload);
+      const sent = await sendRichHtml(ctx, htmlPayload);
 
-      console.log('[Aurora] sent via jhrich | id=' + (sent?.id || '?'));
+      console.log('[Aurora] sent via richHtml | id=' + (sent?.id || '?'));
       await ctx.react('🎛️');
     } catch (e) {
       await ctx.react('❎');
