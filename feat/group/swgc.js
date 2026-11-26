@@ -1,11 +1,19 @@
 /**
  * © Hitori-MD — WhatsApp Bot on Zapo-JS
- * swgc.js — Posting STATUS WhatsApp yang nge-mention grup (Status Group Chat).
+ * swgc.js — Posting Group Status WhatsApp V2 (groupStatusMessageV2) untuk Teks, Gambar, Stiker, Video, Audio/VN.
  */
-import { extractTextFromMessage, resolveTargetMedia, downloadTargetBuffer } from '../../lib/media.js'
+import sharp from 'sharp'
+import { createMediaProcessor } from '@zapo-js/media-utils'
+import {
+  downloadTargetBuffer,
+  extractTextFromMessage,
+  getEvent,
+  resolveTargetMedia
+} from '../../lib/media.js'
 
 const MAX_TEXT = 700
 const MAX_MEDIA_BYTES = 25 * 1024 * 1024
+const mediaProcessor = createMediaProcessor()
 
 const FONTS = {
   sistem: { id: 0, label: 'Sistem (default)' },
@@ -48,27 +56,32 @@ const TEMPLATES = {
 const DEFAULT_STYLE = { bg: '#1E88E5', text: '#FFFFFF', font: 'sistem' }
 
 const HELP =
-  '📸 *SWGC — Status + Mention Grup*\n\n' +
+  '📸 *SWGC — Status Grup WhatsApp*\n\n' +
   '*Teks:*\n`.swgc Halo semua!`\n' +
   '`.swgc Halo semua! --tpl hitori`\n' +
   '`.swgc Halo --bg biru --color putih --font script`\n\n' +
-  '*Gambar / Video:*\n' +
-  'Reply gambar/video lalu `.swgc caption kamu`,\n' +
-  'atau kirim gambar/video dengan caption `.swgc caption kamu`\n\n' +
-  '*Reply teks:* reply sebuah pesan teks pake `.swgc` aja\n\n' +
+  '*Gambar / Stiker / Video / Audio / VN:*\n' +
+  'Reply media lalu `.swgc [caption]`,\n' +
+  'atau kirim gambar/video dengan caption `.swgc [caption]`\n\n' +
+  '*Reply teks:* reply sebuah pesan teks pake `.swgc`\n\n' +
   '`.swgc list` → daftar template, warna & font\n' +
   '`--to <id@g.us>` → pilih grup target (kalo di luar grup)'
 
 function listText() {
   const tpl = Object.entries(TEMPLATES)
-    .map(([k, v]) => `• *${k}* — ${v.label}`).join('\n')
+    .map(([k, v]) => `• *${k}* — ${v.label}`)
+    .join('\n')
   const fonts = Object.entries(FONTS)
-    .map(([k, v]) => `• *${k}* — ${v.label}`).join('\n')
+    .map(([k, v]) => `• *${k}* — ${v.label}`)
+    .join('\n')
   const colors = [...new Set(Object.keys(COLORS))].join(', ')
   return (
-    '🎨 *TEMPLATE* (`--tpl nama`)\n' + tpl +
-    '\n\n🔤 *FONT* (`--font nama`)\n' + fonts +
-    '\n\n🖌️ *WARNA* (`--bg` / `--color`)\n' + colors +
+    '🎨 *TEMPLATE* (`--tpl nama`)\n' +
+    tpl +
+    '\n\n🔤 *FONT* (`--font nama`)\n' +
+    fonts +
+    '\n\n🖌️ *WARNA* (`--bg` / `--color`)\n' +
+    colors +
     '\nAtau hex: `#FF5722`'
   )
 }
@@ -93,12 +106,132 @@ function parseArgs(raw) {
   return { text, opts }
 }
 
+async function normalizeStickerToJpeg(buffer) {
+  return sharp(buffer, { pages: 1 })
+    .flatten({ background: '#121212' })
+    .jpeg({ quality: 92 })
+    .toBuffer()
+}
+
+export async function buildGroupStatusMediaInner(client, payload, rawBuffer, caption) {
+  const kind = payload.mediaType
+
+  if (kind === 'image' || kind === 'sticker') {
+    const imgBuffer = kind === 'sticker' ? await normalizeStickerToJpeg(rawBuffer) : rawBuffer
+    const mimetype =
+      kind === 'sticker'
+        ? 'image/jpeg'
+        : String(payload.mimetype || 'image/jpeg').split(';')[0].trim() || 'image/jpeg'
+
+    const [uploaded, meta, thumb] = await Promise.all([
+      client.message.upload(imgBuffer, { type: 'image', mimetype }),
+      sharp(imgBuffer).metadata().catch(() => null),
+      mediaProcessor.generateImageThumbnail?.(imgBuffer, 100).catch(() => null)
+    ])
+
+    const width = meta?.width ?? thumb?.width
+    const height = meta?.height ?? thumb?.height
+
+    return {
+      imageMessage: {
+        url: uploaded.url,
+        directPath: uploaded.directPath,
+        mediaKey: uploaded.mediaKey,
+        fileSha256: uploaded.fileSha256,
+        fileEncSha256: uploaded.fileEncSha256,
+        fileLength: uploaded.fileLength,
+        mediaKeyTimestamp: uploaded.mediaKeyTimestamp,
+        mimetype,
+        ...(width ? { width } : {}),
+        ...(height ? { height } : {}),
+        ...(thumb?.jpegThumbnail ? { jpegThumbnail: thumb.jpegThumbnail } : {}),
+        ...(caption ? { caption } : {}),
+        contextInfo: { isGroupStatus: true }
+      }
+    }
+  }
+
+  if (kind === 'video' || kind === 'gif') {
+    const isGif = kind === 'gif'
+    const mimetype = String(payload.mimetype || 'video/mp4').split(';')[0].trim() || 'video/mp4'
+
+    const [uploaded, probe, thumb] = await Promise.all([
+      client.message.upload(rawBuffer, { type: isGif ? 'gif' : 'video', mimetype }),
+      mediaProcessor.probeMedia?.(rawBuffer).catch(() => null),
+      mediaProcessor.generateVideoThumbnail?.(rawBuffer, 100).catch(() => null)
+    ])
+
+    const seconds = probe?.durationSeconds ? Math.floor(probe.durationSeconds) : undefined
+    const width = probe?.width
+    const height = probe?.height
+
+    return {
+      videoMessage: {
+        url: uploaded.url,
+        directPath: uploaded.directPath,
+        mediaKey: uploaded.mediaKey,
+        fileSha256: uploaded.fileSha256,
+        fileEncSha256: uploaded.fileEncSha256,
+        fileLength: uploaded.fileLength,
+        mediaKeyTimestamp: uploaded.mediaKeyTimestamp,
+        mimetype,
+        ...(isGif ? { gifPlayback: true } : {}),
+        ...(seconds ? { seconds } : {}),
+        ...(width ? { width } : {}),
+        ...(height ? { height } : {}),
+        ...(thumb?.jpegThumbnail ? { jpegThumbnail: thumb.jpegThumbnail } : {}),
+        ...(uploaded.streamingSidecar ? { streamingSidecar: uploaded.streamingSidecar } : {}),
+        ...(uploaded.metadataUrl ? { metadataUrl: uploaded.metadataUrl } : {}),
+        ...(caption ? { caption } : {}),
+        contextInfo: { isGroupStatus: true }
+      }
+    }
+  }
+
+  if (kind === 'audio' || kind === 'ptt') {
+    const isPtt = kind === 'ptt'
+    const mimetype = payload.mimetype || (isPtt ? 'audio/ogg; codecs=opus' : 'audio/mpeg')
+
+    const [uploaded, probe, wave] = await Promise.all([
+      client.message.upload(rawBuffer, { type: isPtt ? 'ptt' : 'audio', mimetype }),
+      mediaProcessor.probeMedia?.(rawBuffer).catch(() => null),
+      isPtt ? mediaProcessor.computeWaveform?.(rawBuffer).catch(() => null) : Promise.resolve(null)
+    ])
+
+    const seconds = probe?.durationSeconds
+      ? Math.floor(probe.durationSeconds)
+      : wave?.durationSeconds
+        ? Math.floor(wave.durationSeconds)
+        : undefined
+
+    return {
+      audioMessage: {
+        url: uploaded.url,
+        directPath: uploaded.directPath,
+        mediaKey: uploaded.mediaKey,
+        fileSha256: uploaded.fileSha256,
+        fileEncSha256: uploaded.fileEncSha256,
+        fileLength: uploaded.fileLength,
+        mediaKeyTimestamp: uploaded.mediaKeyTimestamp,
+        mimetype,
+        ptt: Boolean(isPtt),
+        ...(seconds ? { seconds } : {}),
+        ...(wave?.waveform ? { waveform: wave.waveform } : {}),
+        ...(uploaded.streamingSidecar ? { streamingSidecar: uploaded.streamingSidecar } : {}),
+        contextInfo: { isGroupStatus: true }
+      }
+    }
+  }
+
+  throw new Error(`Tipe media '${kind}' belum didukung untuk SWGC.`)
+}
+
 export default {
   name: 'swgc',
-  aliases: ['upswgc', 'swgrup', 'groupstatus'],
+  aliases: ['upswgc', 'swgrup', 'swgroup', 'groupstatus'],
   tags: 'group',
   owner: true,
-  description: 'Posting status WA yang nge-mention grup (teks/gambar/video + template)',
+  description: 'Posting status WA grup (teks, gambar, stiker, video, audio/VN) via groupStatusMessageV2',
   cooldown: 30_000,
 
   async run(ctx) {
@@ -108,7 +241,6 @@ export default {
     }
 
     const { text: argText, opts } = parseArgs(raw)
-
     const groupJid = opts.to || (ctx.chat?.endsWith('@g.us') ? ctx.chat : null)
     if (!groupJid || !groupJid.endsWith('@g.us')) {
       return ctx.reply('⚠️ Pake di dalam grup, atau tambahin `--to <id@g.us>`.\n\n' + HELP)
@@ -116,10 +248,11 @@ export default {
 
     const { quoted, targetMessage: mediaSource, payload } = resolveTargetMedia(ctx)
     const quotedText = extractTextFromMessage(quoted)
-    const hasMedia = payload && ['image', 'video', 'gif'].includes(payload.mediaType)
+    const supportedMedia = new Set(['image', 'video', 'gif', 'sticker', 'audio', 'ptt'])
+    const hasMedia = Boolean(payload && supportedMedia.has(payload.mediaType))
 
     if (payload && !hasMedia) {
-      return ctx.reply('⚠️ Cuma dukung gambar, video, atau teks buat status.')
+      return ctx.reply('⚠️ Cuma dukung gambar, stiker, video, audio/VN, atau teks buat status grup.')
     }
 
     const text = argText || (!hasMedia ? quotedText : '')
@@ -129,24 +262,26 @@ export default {
       return ctx.reply(`⚠️ Teks status kepanjangan (${text.length}/${MAX_TEXT} karakter).`)
     }
 
+    if (hasMedia && payload.fileLength && payload.fileLength > MAX_MEDIA_BYTES) {
+      return ctx.reply(
+        `⚠️ Media kegedean (${(payload.fileLength / 1024 / 1024).toFixed(1)} MB, maks ${MAX_MEDIA_BYTES / 1024 / 1024} MB).`
+      )
+    }
+
     await ctx.react('⏳')
 
     try {
-      let content
+      let insideMessage
+
       if (hasMedia) {
-        const media = await downloadTargetBuffer(mediaSource)
-        if (media.length > MAX_MEDIA_BYTES) {
+        const mediaBuffer = await downloadTargetBuffer(mediaSource)
+        if (mediaBuffer.length > MAX_MEDIA_BYTES) {
           await ctx.react('❎')
-          return ctx.reply(`⚠️ Media kegedean (${(media.length / 1024 / 1024).toFixed(1)} MB, maks ${MAX_MEDIA_BYTES / 1024 / 1024} MB).`)
+          return ctx.reply(
+            `⚠️ Media kegedean (${(mediaBuffer.length / 1024 / 1024).toFixed(1)} MB, maks ${MAX_MEDIA_BYTES / 1024 / 1024} MB).`
+          )
         }
-        const isVideo = payload.mediaType !== 'image'
-        content = {
-          type: isVideo ? 'video' : 'image',
-          media,
-          mimetype: payload.mimetype || (isVideo ? 'video/mp4' : 'image/jpeg'),
-          ...(text ? { caption: text } : {}),
-          contextInfo: { isGroupStatus: true }
-        }
+        insideMessage = await buildGroupStatusMediaInner(ctx.client, payload, mediaBuffer, text)
       } else {
         const tpl = opts.tpl ? TEMPLATES[opts.tpl.toLowerCase()] : null
         if (opts.tpl && !tpl) {
@@ -157,14 +292,23 @@ export default {
 
         const bg = opts.bg ? toArgb(opts.bg) : toArgb(base.bg)
         const fg = opts.color ? toArgb(opts.color) : toArgb(base.text)
-        if (opts.bg && bg === null) { await ctx.react('❎'); return ctx.reply(`⚠️ Warna latar *${opts.bg}* gak valid. Cek *.swgc list*.`) }
-        if (opts.color && fg === null) { await ctx.react('❎'); return ctx.reply(`⚠️ Warna teks *${opts.color}* gak valid. Cek *.swgc list*.`) }
+        if (opts.bg && bg === null) {
+          await ctx.react('❎')
+          return ctx.reply(`⚠️ Warna latar *${opts.bg}* gak valid. Cek *.swgc list*.`)
+        }
+        if (opts.color && fg === null) {
+          await ctx.react('❎')
+          return ctx.reply(`⚠️ Warna teks *${opts.color}* gak valid. Cek *.swgc list*.`)
+        }
 
         const fontKey = (opts.font ?? base.font).toLowerCase()
         const font = FONTS[fontKey]
-        if (!font) { await ctx.react('❎'); return ctx.reply(`⚠️ Font *${fontKey}* gak ada. Cek *.swgc list*.`) }
+        if (!font) {
+          await ctx.react('❎')
+          return ctx.reply(`⚠️ Font *${fontKey}* gak ada. Cek *.swgc list*.`)
+        }
 
-        content = {
+        insideMessage = {
           extendedTextMessage: {
             text,
             backgroundArgb: bg,
@@ -175,13 +319,27 @@ export default {
         }
       }
 
-      await ctx.client.message.send(groupJid, content)
+      const groupStatusProto = {
+        groupStatusMessageV2: {
+          message: insideMessage
+        }
+      }
+
+      await ctx.client.message.send(groupJid, groupStatusProto, {
+        disableGroupEphemeralAutoInject: true
+      })
 
       await ctx.react('✅')
-      return ctx.reply('✅ Status Grup (SWGC) berhasil dikirim, Kak!')
+      const rawEvent = getEvent(ctx)
+      const label = hasMedia ? `${payload.mediaType}${text ? ` • "${text.slice(0, 60)}"` : ''}` : 'teks'
+      return ctx.client.message.send(
+        ctx.chat,
+        `✅ Berhasil membuat status grup (${label})!`,
+        rawEvent ? { quote: rawEvent } : {}
+      )
     } catch (e) {
       await ctx.react('❎')
-      return ctx.reply('❌ Gagal posting status: ' + String(e.message || e).slice(0, 200))
+      return ctx.reply('❌ Gagal posting status grup: ' + String(e?.message || e).slice(0, 220))
     }
   }
 }
