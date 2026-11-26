@@ -36,6 +36,95 @@ const MAX_TEXT = 3500
 const MAX_CTX = 5000
 const MEM = (globalThis.HITORI_AI_MEM ??= new Map())
 const MEM_CAP = 8
+const SESSION_IDLE_TTL_MS = 30 * 60 * 1000
+const MAX_ACTIVE_SESSIONS = 100
+
+function getSessionTtlMs() {
+  const custom = Number(process.env.HITORI_AI_SESSION_TTL_MS)
+  return Number.isFinite(custom) && custom > 0 ? custom : SESSION_IDLE_TTL_MS
+}
+
+function getActiveSession(memKey, now = Date.now()) {
+  const entry = MEM.get(memKey)
+  if (!entry) return null
+
+  // Kompatibilitas bila ada format lama berupa Array di RAM saat hot-reload
+  if (Array.isArray(entry)) {
+    const wrapped = { turns: entry.slice(-MEM_CAP), doc: null, lastSummary: '', updatedAt: now }
+    MEM.set(memKey, wrapped)
+    return wrapped
+  }
+
+  if (now - (entry.updatedAt || 0) > getSessionTtlMs()) {
+    MEM.delete(memKey)
+    return null
+  }
+  return entry
+}
+
+function saveSessionTurn(
+  memKey,
+  { userContent, assistantText, doc = undefined, lastSummary = undefined, isDocTurn = false },
+  now = Date.now()
+) {
+  const existing = getActiveSession(memKey, now) || { turns: [], doc: null, lastSummary: '', updatedAt: now }
+  const turns = [...(existing.turns || [])]
+  if (userContent) turns.push({ role: 'user', content: String(userContent), ...(isDocTurn ? { isDocTurn: true } : {}) })
+  if (assistantText) {
+    turns.push({ role: 'assistant', content: String(assistantText).slice(0, 1400), ...(isDocTurn ? { isDocTurn: true } : {}) })
+  }
+  while (turns.length > MEM_CAP) turns.shift()
+
+  const nextEntry = {
+    turns,
+    doc: doc !== undefined ? doc : existing.doc,
+    lastSummary: lastSummary !== undefined ? lastSummary : existing.lastSummary,
+    updatedAt: now
+  }
+
+  // Re-insert untuk LRU eviction ketika sesi aktif melebihi batas RAM
+  MEM.delete(memKey)
+  MEM.set(memKey, nextEntry)
+
+  const ttl = getSessionTtlMs()
+  for (const [k, v] of MEM.entries()) {
+    const ts = Array.isArray(v) ? now : (v?.updatedAt || 0)
+    if (now - ts > ttl || MEM.size > MAX_ACTIVE_SESSIONS) {
+      if (k !== memKey) MEM.delete(k)
+    }
+    if (MEM.size <= MAX_ACTIVE_SESSIONS && now - ts <= ttl) break
+  }
+}
+
+const DOC_FOLLOWUP_RE =
+  /\b(pdf|dokumen|document|file|berkas|lampiran|vn|voice\s*note|rekaman|audio|transkrip|halaman|page|bab|pasal|tabel|paragraf|crosscheck|cross[\s-]?check|cek\s+ulang|cek\s+lagi|periksa\s+(?:ulang|lagi)|baca\s+(?:ulang|lagi)|koreksi|revisi|kelewatan|terlewat|kelewat|kurang\s+lengkap|belum\s+semua|lengkapi|lengkapin|selengkapnya|bagian\s+lain|detail(?:kan|in)?|rangkum\s+ulang|terjemah(?:kan|in)|isi(?:nya)?\s+(?:itu|tadi|tersebut|semua))\b/i
+
+const DOC_ANAPHORA_RE = /\b(itu|tadi|tersebut|barusan|di\s+atas)\b/i
+
+export function isFollowUpOnCachedDoc(query, cachedDoc, { quotedText = '', hasUrl = false } = {}) {
+  if (!cachedDoc) return false
+  const cleanQ = String(query || '').trim()
+  if (!cleanQ) return false
+  if (hasUrl) return false
+
+  if (quotedText) {
+    const fileBase = String(cachedDoc.fileName || '').toLowerCase()
+    const mentionsFile = fileBase && quotedText.toLowerCase().includes(fileBase)
+    if (!mentionsFile && !DOC_FOLLOWUP_RE.test(cleanQ)) return false
+  }
+
+  if (DOC_FOLLOWUP_RE.test(cleanQ)) return true
+
+  // Jika kata tanya mengarah ke dokumen sebelumnya tanpa membawa topik baru jelas
+  if (
+    DOC_ANAPHORA_RE.test(cleanQ) &&
+    !/\b(vps|pm2|server|ram|cpu|ingatkan|remind|pengingat|cuaca|berita|harga)\b/i.test(cleanQ)
+  ) {
+    return true
+  }
+
+  return false
+}
 
 const isCodeRequest = (q) =>
   /\b(kode|code|html|css|javascript|js|script|game|snake|tetris|flappy|web|program|bot|plugin)\b/i.test(q)
@@ -319,10 +408,12 @@ export default {
     const query = rawQuery
     const memKey = `${ctx.chat || 'dm'}:${ctx.sender || 'anon'}`
 
+    const sessionState = getActiveSession(memKey)
+
     if (/^(reset|mulai( ulang)?|lupakan)/i.test(query)) {
       MEM.delete(memKey)
       MEM.delete(ctx.sender)
-      return ctx.reply(`🧠 Sesi ${config.botName} AI di chat ini di-reset. Mulai obrolan baru yuk!`)
+      return ctx.reply(`🧠 Sesi ${config.botName} AI di chat ini di-reset (termasuk memori PDF/dokumen aktif).`)
     }
 
     let media = null
@@ -392,23 +483,37 @@ export default {
         )
       }
 
-      // Jalur khusus PDF multimodal (Gemini native PDF -> fallback teks PDF lokal)
-      if (media?.kind === 'pdf') {
-        const pdfRes = await analyzePdf(media.buffer, media.fileName, query, {
+      // Jalur khusus PDF multimodal (ChatGPT -> Gemini -> Ekstrak teks lokal)
+      // Juga aktif otomatis saat user menanyakan lanjutan/crosscheck PDF pada sesi aktif (<30 mnt)
+      const directUrl = query ? extractUrl(query) : null
+      const reuseCachedPdf =
+        !media &&
+        sessionState?.doc?.kind === 'pdf' &&
+        isFollowUpOnCachedDoc(query, sessionState.doc, { quotedText, hasUrl: Boolean(directUrl) })
+
+      if (media?.kind === 'pdf' || reuseCachedPdf) {
+        const pdfDoc = media?.kind === 'pdf'
+          ? { kind: 'pdf', fileName: media.fileName, buffer: media.buffer }
+          : sessionState.doc
+        const pdfRes = await analyzePdf(pdfDoc.buffer, pdfDoc.fileName, query, {
           orca,
           cfg: ORCA_CONFIG,
-          persona
+          persona,
+          previousSummary: reuseCachedPdf ? sessionState.lastSummary : ''
         })
 
-        const newHist = MEM.get(memKey) || []
-        newHist.push({ role: 'user', content: `[PDF: ${media.fileName}] ${query || 'Ringkas PDF ini'}` })
-        newHist.push({ role: 'assistant', content: (pdfRes.text || '').slice(0, 1200) })
-        while (newHist.length > MEM_CAP) newHist.shift()
-        MEM.set(memKey, newHist)
+        saveSessionTurn(memKey, {
+          userContent: `[PDF: ${pdfDoc.fileName}] ${query || 'Ringkas PDF ini secara menyeluruh'}`,
+          assistantText: pdfRes.text,
+          doc: pdfDoc,
+          lastSummary: pdfRes.text,
+          isDocTurn: true
+        })
 
         const pdfSubs = [
           subText(
-            `🤖 *${config.botName.toUpperCase()} AI* — _${pdfRes.modeLabel}${pdfRes.provider ? ` • ${pdfRes.provider}` : ''}_\n📄 File: \`${media.fileName}\``
+            `🤖 *${config.botName.toUpperCase()} AI* — _${pdfRes.modeLabel}${pdfRes.provider ? ` • ${pdfRes.provider}` : ''}_` +
+              `\n📄 File: \`${pdfDoc.fileName}\`${reuseCachedPdf ? ' _(memori sesi aktif)_' : ''}`
           ),
           ...chunkText(pdfRes.text.trim(), MAX_TEXT).slice(0, 6).map(subText),
           subText(footer())
@@ -420,10 +525,17 @@ export default {
 
       let sttInfo = null
       let audioTranscript = ''
+      let reusedCachedDoc = null
       if (media?.kind === 'audio') {
         const stt = await transcribeAudio(media.buffer, media.mime, ORCA_CONFIG)
         audioTranscript = stt.transcript
         sttInfo = stt.provider
+      } else if (
+        !media &&
+        (sessionState?.doc?.kind === 'audio' || sessionState?.doc?.kind === 'textdoc') &&
+        isFollowUpOnCachedDoc(query, sessionState.doc, { quotedText, hasUrl: Boolean(directUrl) })
+      ) {
+        reusedCachedDoc = sessionState.doc
       }
 
       const toolContext = []
@@ -432,7 +544,7 @@ export default {
         toolContext.push(`FILE INTERNAL BOT: ${file.safe}\n"""\n${file.code.slice(0, MAX_CTX)}\n"""`)
       }
 
-      const url = query ? extractUrl(query) : null
+      const url = directUrl
       if (url) {
         const pageRes = await readPage(url, jina)
         if (typeof pageRes === 'string' && pageRes) {
@@ -456,7 +568,12 @@ export default {
       const messages = [{ role: 'system', content: persona + realTimeContext() }]
       // Jika user me-reply pesan tertentu (mis. pesan NaoFlix), fokuskan konteks pada pesan yang di-reply
       // agar topik lama di MEM tidak menabrak/membajak konteks reply tersebut.
-      const hist = quotedText ? [] : (MEM.get(memKey) || [])
+      // Jika pertanyaan baru tidak membahas PDF/dokumen aktif, saring riwayat isDocTurn agar PDF tidak ikut dimention.
+      const hist = quotedText
+        ? []
+        : (sessionState?.turns || [])
+            .filter((t) => reusedCachedDoc || !t.isDocTurn)
+            .map(({ role, content }) => ({ role, content }))
       messages.push(...hist)
 
       if (toolContext.length) {
@@ -467,7 +584,7 @@ export default {
       }
 
       const effectiveQuery =
-        quotedText && media?.kind !== 'audio' && media?.kind !== 'textdoc'
+        quotedText && media?.kind !== 'audio' && media?.kind !== 'textdoc' && !reusedCachedDoc
           ? (query
               ? `${query}\n\n[PESAN YANG SEDANG DI-REPLY USER — JADIKAN KONTEKS UTAMA]\n` +
                 wrapUntrustedContent('quoted_reply', quotedText, 4000)
@@ -477,6 +594,7 @@ export default {
 
       let userContent
       let modeLabel = 'Chat Mode'
+      let activeDocToCache = undefined
       if (media?.kind === 'image') {
         modeLabel = 'Vision Mode'
         userContent = orca.visionMessage(
@@ -485,6 +603,7 @@ export default {
         )
       } else if (media?.kind === 'audio') {
         modeLabel = `Voice Note • ${sttInfo}`
+        activeDocToCache = { kind: 'audio', fileName: 'voice-note', textContent: audioTranscript }
         const task =
           query ||
           'Ringkas poin-poin inti dari transkrip voice note berikut secara jelas dalam bahasa Indonesia.'
@@ -497,6 +616,7 @@ export default {
         }
       } else if (media?.kind === 'textdoc') {
         modeLabel = `Dokumen • ${media.fileName}`
+        activeDocToCache = { kind: 'textdoc', fileName: media.fileName, textContent: media.textContent }
         const task =
           query ||
           `Ringkas isi dokumen "${media.fileName}" dan jelaskan poin terpentingnya dalam bahasa Indonesia.`
@@ -506,6 +626,15 @@ export default {
             `${task}\n\n` +
             `Isi File (${media.fileName}):\n` +
             wrapUntrustedContent(`file:${media.fileName}`, media.textContent, 8000)
+        }
+      } else if (reusedCachedDoc) {
+        modeLabel = reusedCachedDoc.kind === 'audio' ? 'Voice Note (Sesi Aktif)' : `Dokumen • ${reusedCachedDoc.fileName}`
+        userContent = {
+          role: 'user',
+          content:
+            `${query}\n\n` +
+            `Konteks ${reusedCachedDoc.kind === 'audio' ? 'Transkrip Voice Note' : `File ${reusedCachedDoc.fileName}`} dari sesi aktif:\n` +
+            wrapUntrustedContent(reusedCachedDoc.fileName, reusedCachedDoc.textContent, 8000)
         }
       } else {
         userContent = { role: 'user', content: effectiveQuery }
@@ -565,7 +694,6 @@ export default {
       }
 
       const safeReplyText = redactSecrets(result.text)
-      const newHist = MEM.get(memKey) || []
       const memUserLabel =
         (quotedText && query ? `[Reply: ${quotedText.slice(0, 140)}] ${query}` : query) ||
         (media?.kind === 'audio'
@@ -575,10 +703,12 @@ export default {
             : quotedText
               ? `[Reply: ${quotedText.slice(0, 140)}]`
               : '[user mengirim gambar]')
-      newHist.push({ role: 'user', content: memUserLabel })
-      newHist.push({ role: 'assistant', content: safeReplyText.slice(0, 1200) })
-      while (newHist.length > MEM_CAP) newHist.shift()
-      MEM.set(memKey, newHist)
+      saveSessionTurn(memKey, {
+        userContent: memUserLabel,
+        assistantText: safeReplyText,
+        doc: activeDocToCache,
+        isDocTurn: Boolean(activeDocToCache || reusedCachedDoc)
+      })
 
       const submessages = [
         subText(
