@@ -28,6 +28,7 @@ import { checkMinecraftAnswer } from './handlers/minecraftHandler.js'
 import { normalizeNumber, getStaffEntry } from './core/staff.js'
 import { maintenance } from './core/rpg.js'
 import { startReminderScheduler, stopReminderScheduler } from './core/reminders.js'
+import { recordWrappedEvent } from './core/wrapped.js'
 import { runEval } from './core/evalRunner.js'
 import { runExec } from './core/execRunner.js'
 import { reactTo } from './core/react.js'
@@ -190,6 +191,7 @@ async function main() {
     void checkGameAnswer(client, event)
     void checkMenfessReply(client, event)
     void checkMinecraftAnswer(client, event)
+    recordWrappedEvent(client, event)
     route(client, event).catch((err) => logger.error({ err }, 'Gagal memproses pesan'))
   })
 

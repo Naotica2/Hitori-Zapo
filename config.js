@@ -25,7 +25,7 @@ export default {
   ],
 
   // Fitur grup yang butuh on/off (permission admin/staff)
-  toggleable: ['welcome', 'bye', 'antilink', 'game'],
+  toggleable: ['welcome', 'bye', 'antilink', 'game', 'wrapped'],
 
   // BLACKLIST domain antilink (default; bisa di-override per grup).
   // Selain daftar ini = boleh. Yang di daftar = dihapus.
