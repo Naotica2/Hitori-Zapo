@@ -91,13 +91,18 @@ async function thumbDataUri(url) {
   } catch { return ''; }
 }
 
-const escapeHtmlJs = (value) =>
+const escapeAttrJson = (value) =>
+  JSON.stringify(value)
+    .replace(/</g, '\\u003C')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+
+const escapeHtml = (value) =>
   String(value ?? '')
-    .replace(/\\/g, '\\\\')
-    .replace(/"/g, '\\"')
-    .replace(/`/g, '\\`')
-    .replace(/\$\{/g, '\\${')
-    .replace(/</g, '\\x3C');
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 
 function buildHtml({ finalTitle, finalChannel, finalDuration, videoUrl, thumbnailb64, wsUrl, mime, isAudio }) {
   const cfg = {
@@ -196,7 +201,9 @@ z-index:2
 display:flex;
 align-items:center;
 justify-content:space-between;
-margin-bottom:15px
+margin-bottom:15px;
+position:relative;
+z-index:5
 }
 .top-title{
 font-size:13px;
@@ -226,7 +233,20 @@ display:flex;
 align-items:center;
 justify-content:center;
 padding:0;
-flex-shrink:0
+flex-shrink:0;
+cursor:pointer;
+position:relative;
+z-index:6;
+touch-action:manipulation
+}
+.icon-btn.is-active{
+background:rgba(0,255,136,.24);
+color:#00ff88;
+box-shadow:0 0 12px rgba(0,255,136,.22)
+}
+.icon-btn.is-muted{
+background:rgba(255,77,109,.18);
+color:#ff6b81
 }
 .icon-btn svg{
 width:17px;
@@ -235,7 +255,8 @@ fill:none;
 stroke:currentColor;
 stroke-width:2;
 stroke-linecap:round;
-stroke-linejoin:round
+stroke-linejoin:round;
+pointer-events:none
 }
 .video-frame{
 position:relative;
@@ -245,14 +266,16 @@ border-radius:15px;
 overflow:hidden;
 background:#000;
 box-shadow:0 12px 35px rgba(0,0,0,.45),0 0 0 1px rgba(34,211,238,.14);
-cursor:pointer
+cursor:pointer;
+touch-action:manipulation
 }
 .video-frame video{
 width:100%;
 height:100%;
 display:block;
 background:#000;
-object-fit:contain
+object-fit:contain;
+pointer-events:none
 }
 .big-play{
 position:absolute;
@@ -262,7 +285,7 @@ align-items:center;
 justify-content:center;
 background:rgba(0,0,0,.18);
 transition:opacity .2s;
-z-index:3
+z-index:5
 }
 .big-btn{
 width:64px;
@@ -275,6 +298,10 @@ display:flex;
 align-items:center;
 justify-content:center;
 padding:0;
+cursor:pointer;
+position:relative;
+z-index:6;
+touch-action:manipulation;
 box-shadow:0 6px 18px rgba(0,0,0,.35),0 0 22px rgba(0,255,136,.35)
 }
 .big-btn svg{
@@ -284,7 +311,8 @@ fill:currentColor;
 stroke:currentColor;
 stroke-width:2;
 stroke-linecap:round;
-stroke-linejoin:round
+stroke-linejoin:round;
+pointer-events:none
 }
 .frame-playing .big-play{
 opacity:0;
@@ -311,7 +339,9 @@ overflow:hidden;
 text-overflow:ellipsis
 }
 .progress{
-margin-top:18px
+margin-top:18px;
+position:relative;
+z-index:5
 }
 .times{
 display:flex;
@@ -326,7 +356,9 @@ display:flex;
 align-items:center;
 justify-content:center;
 gap:18px;
-margin-top:13px
+margin-top:13px;
+position:relative;
+z-index:5
 }
 .side-btn{
 width:38px;
@@ -338,7 +370,11 @@ display:flex;
 align-items:center;
 justify-content:center;
 padding:0;
-opacity:.85
+opacity:.85;
+cursor:pointer;
+position:relative;
+z-index:6;
+touch-action:manipulation
 }
 .side-btn svg{
 width:19px;
@@ -347,14 +383,17 @@ fill:none;
 stroke:currentColor;
 stroke-width:2;
 stroke-linecap:round;
-stroke-linejoin:round
+stroke-linejoin:round;
+pointer-events:none
 }
 .bottom{
 display:flex;
 align-items:center;
 justify-content:space-between;
 margin-top:15px;
-gap:12px
+gap:12px;
+position:relative;
+z-index:5
 }
 .bottom-left,
 .bottom-right{
@@ -514,9 +553,9 @@ to{background-position:300% 0}
 				<div class="top">
 					<div>
 						<div class="top-title" id="playlistTitle">${cfg.isAudio ? 'NOW PLAYING AUDIO' : 'NOW PLAYING VIDEO'}</div>
-						<div class="top-sub" id="playlistSub">${escapeHtmlJs(finalTitle)}</div>
+						<div class="top-sub" id="playlistSub">${escapeHtml(finalTitle)}</div>
 					</div>
-					<button class="icon-btn" type="button" onclick="toggleMute()" id="muteButton">
+					<button class="icon-btn" type="button" id="muteButton" aria-label="Mute">
 						<svg id="volumeIcon" viewBox="0 0 24 24">
 							<path d="M11 5 6 9H2v6h4l5 4V5z"></path>
 							<path d="M19 9a5 5 0 0 1 0 6"></path>
@@ -525,10 +564,11 @@ to{background-position:300% 0}
 					</button>
 				</div>
 
-				<div class="video-frame" id="videoFrame" onclick="toggleVideo()">
-					<video id="videoPlayer" playsinline webkit-playsinline preload="metadata" poster="${thumbnailb64}"></video>
+				<div class="video-frame" id="videoFrame">
+					<video id="videoPlayer" playsinline webkit-playsinline preload="metadata" poster="${escapeHtml(thumbnailb64)}"></video>
+					<audio id="audioPlayer" playsinline webkit-playsinline preload="metadata" style="display:none"></audio>
 					<div class="big-play" id="bigPlay">
-						<button class="big-btn" type="button" onclick="event.stopPropagation();toggleVideo()">
+						<button class="big-btn" type="button" id="bigBtn" aria-label="Play or Pause">
 							<svg id="playIcon" viewBox="0 0 24 24">
 								<path d="M8 5v14l11-7z"></path>
 							</svg>
@@ -541,26 +581,26 @@ to{background-position:300% 0}
 				</div>
 
 				<div class="info">
-					<div class="song-title" id="songTitle">Unknown Video</div>
-					<div class="artist" id="artist">Unknown Channel</div>
+					<div class="song-title" id="songTitle">${escapeHtml(cfg.title || 'Unknown Video')}</div>
+					<div class="artist" id="artist">${escapeHtml(cfg.channel || 'Unknown Channel')}</div>
 				</div>
 
 				<div class="progress">
-					<input id="progress" type="range" min="0" max="100" value="0" step="0.1" oninput="seekVideo(this.value)">
+					<input id="progress" type="range" min="0" max="100" value="0" step="0.1">
 					<div class="times">
 						<span id="currentTime">0:00</span>
-						<span id="duration">0:00</span>
+						<span id="duration">${escapeHtml(cfg.duration || '0:00')}</span>
 					</div>
 				</div>
 
 				<div class="controls">
-					<button class="side-btn" type="button" onclick="previousVideo()">
+					<button class="side-btn" type="button" id="prevBtn" aria-label="Mundur 10 detik">
 						<svg viewBox="0 0 24 24">
 							<path d="M19 20 9 12l10-8v16z"></path>
 							<path d="M5 19V5"></path>
 						</svg>
 					</button>
-					<button class="side-btn" type="button" onclick="toggleVideo()">
+					<button class="side-btn" type="button" id="playPauseBtn" aria-label="Play atau Pause">
 						<svg id="smallPlayIcon" viewBox="0 0 24 24">
 							<path d="M8 5v14l11-7z"></path>
 						</svg>
@@ -569,7 +609,7 @@ to{background-position:300% 0}
 							<path d="M17 5v14"></path>
 						</svg>
 					</button>
-					<button class="side-btn" type="button" onclick="nextVideo()">
+					<button class="side-btn" type="button" id="nextBtn" aria-label="Maju 10 detik">
 						<svg viewBox="0 0 24 24">
 							<path d="m5 4 10 8-10 8V4z"></path>
 							<path d="M19 5v14"></path>
@@ -579,7 +619,7 @@ to{background-position:300% 0}
 
 				<div class="bottom">
 					<div class="bottom-left">
-						<button class="icon-btn" type="button" onclick="toggleRepeat()" id="repeatButton">
+						<button class="icon-btn" type="button" id="repeatButton" aria-label="Loop">
 							<svg viewBox="0 0 24 24">
 								<path d="M17 2l4 4-4 4"></path>
 								<path d="M3 11V9a3 3 0 0 1 3-3h15"></path>
@@ -589,14 +629,14 @@ to{background-position:300% 0}
 						</button>
 					</div>
 					<div class="bottom-right">
-						<button class="icon-btn" type="button" onclick="toggleMute()">
+						<button class="icon-btn" type="button" id="muteButtonBottom" aria-label="Mute">
 							<svg viewBox="0 0 24 24">
 								<path d="M11 5 6 9H2v6h4l5 4V5z"></path>
 								<path d="m19 9-5 6"></path>
 								<path d="m14 9 5 6"></path>
 							</svg>
 						</button>
-						<input class="volume" id="volume" type="range" min="0" max="1" step="0.01" value="1" oninput="changeVolume(this.value)">
+						<input class="volume" id="volume" type="range" min="0" max="1" step="0.01" value="1">
 					</div>
 				</div>
 			</div>
@@ -647,468 +687,308 @@ to{background-position:300% 0}
 	</div>
 
 	<script>
-window.VIDEO_CONFIG = {
-	title: "${escapeHtmlJs(cfg.title)}",
-	channel: "${escapeHtmlJs(cfg.channel)}",
-	duration: "${escapeHtmlJs(cfg.duration)}",
-	videoUrl: "${escapeHtmlJs(cfg.videoUrl)}",
-	wsUrl: "${escapeHtmlJs(cfg.wsUrl)}",
-	mime: "${escapeHtmlJs(cfg.mime)}",
-	isAudio: ${cfg.isAudio},
-	autoplay: ${cfg.autoplay},
-	volume: ${cfg.volume},
-	loop: ${cfg.loop}
-};
+(function () {
+	var config = ${escapeAttrJson(cfg)};
+	try { window.VIDEO_CONFIG = config; } catch (e) {}
 
-var video = document.getElementById("videoPlayer");
-var frame = document.getElementById("videoFrame");
-var songTitle = document.getElementById("songTitle");
-var artist = document.getElementById("artist");
-var progress = document.getElementById("progress");
-var currentTime = document.getElementById("currentTime");
-var durationLabel = document.getElementById("duration");
-var volume = document.getElementById("volume");
-var smallPlayIcon = document.getElementById("smallPlayIcon");
-var smallPauseIcon = document.getElementById("smallPauseIcon");
-var repeatButton = document.getElementById("repeatButton");
-var playlistSub = document.getElementById("playlistSub");
-var isLoop = false;
-var userPressed = false;
-var directFallbackUsed = false;
-var fetchController = null;
-var userAbortedFetch = false;
-var wsAttempted = false;
+	var video = document.getElementById("videoPlayer");
+	var audioEl = document.getElementById("audioPlayer");
+	var frame = document.getElementById("videoFrame");
+	var songTitle = document.getElementById("songTitle");
+	var artist = document.getElementById("artist");
+	var progress = document.getElementById("progress");
+	var currentTime = document.getElementById("currentTime");
+	var durationLabel = document.getElementById("duration");
+	var volume = document.getElementById("volume");
+	var bigBtn = document.getElementById("bigBtn");
+	var playPauseBtn = document.getElementById("playPauseBtn");
+	var prevBtn = document.getElementById("prevBtn");
+	var nextBtn = document.getElementById("nextBtn");
+	var playIcon = document.getElementById("playIcon");
+	var pauseIcon = document.getElementById("pauseIcon");
+	var smallPlayIcon = document.getElementById("smallPlayIcon");
+	var smallPauseIcon = document.getElementById("smallPauseIcon");
+	var repeatButton = document.getElementById("repeatButton");
+	var muteButton = document.getElementById("muteButton");
+	var muteButtonBottom = document.getElementById("muteButtonBottom");
+	var playlistSub = document.getElementById("playlistSub");
+	var background = document.getElementById("background");
 
-var config = window.VIDEO_CONFIG || {};
-var background = document.getElementById("background");
-songTitle.textContent = config.title || "Unknown Video";
-artist.textContent = config.channel || "Unknown Channel";
-playlistSub.textContent = config.title || "Unknown Video";
-if (config.duration) {
-	durationLabel.textContent = config.duration;
-}
+	var activeMedia = video;
+	var isLoop = Boolean(config.loop);
+	var userPressed = false;
+	var audioFallbackTried = false;
+	var corsFetchAttempted = false;
+	var wsAttempted = false;
+	var wsVideo = null;
+	var wsChunks = [];
+	var wsDownloaded = 0;
+	var wsTotal = null;
+	var wsMime = config.mime || "audio/mpeg";
+	var wsObjectUrl = null;
+	var wsDone = false;
+	var wsLastLog = 0;
 
-var yearEl = document.getElementById("year");
-if (yearEl) yearEl.textContent = new Date().getFullYear();
-
-if (video.poster && background) {
-	background.style.backgroundImage = "url('" + video.poster + "')";
-}
-
-if (config.volume !== undefined) {
-	video.volume = config.volume;
-	volume.value = config.volume;
-}
-isLoop = config.loop || false;
-video.loop = isLoop;
-updateLoopStatus();
-
-function formatTime(seconds) {
-	if (!isFinite(seconds)) return "0:00";
-	var min = Math.floor(seconds / 60);
-	var sec = Math.floor(seconds % 60);
-	if (sec < 10) sec = "0" + sec;
-	return min + ":" + sec;
-}
-
-function updateUI() {
-	if (video.paused) {
-		smallPlayIcon.style.display = "block";
-		smallPauseIcon.style.display = "none";
-		frame.classList.remove("frame-playing");
-	} else {
-		smallPlayIcon.style.display = "none";
-		smallPauseIcon.style.display = "block";
-		frame.classList.add("frame-playing");
+	function getMedia() {
+		return activeMedia || video;
 	}
-}
 
-function playVideo() {
-	var result = video.play();
-	if (result && result.catch) {
-		result.catch(function() {});
+	function fmtSize(bytes) {
+		if (!isFinite(bytes)) return "0 B";
+		if (bytes >= 1048576) return (bytes / 1048576).toFixed(2) + " MB";
+		if (bytes >= 1024) return (bytes / 1024).toFixed(2) + " KB";
+		return bytes + " B";
 	}
-	updateUI();
-}
 
-function toggleVideo() {
-	if (video.paused) {
-		if (!video.src) {
-			userPressed = true;
-			if (config.videoUrl) {
-				userAbortedFetch = true;
-				if (fetchController) {
-					try { fetchController.abort(); } catch (e) {}
-				}
-				if (wsVideo) {
-					try { wsVideo.close(); } catch (e) {}
-				}
-				useNativeMediaFallback(config, "Play instan via stream langsung...");
-				playVideo();
-				return;
-			}
-			writeLog("Menunggu media selesai dimuat...");
-			return;
+	function formatTime(seconds) {
+		if (!isFinite(seconds) || seconds < 0) return "0:00";
+		var min = Math.floor(seconds / 60);
+		var sec = Math.floor(seconds % 60);
+		if (sec < 10) sec = "0" + sec;
+		return min + ":" + sec;
+	}
+
+	function setWsState(state) {
+		var el = document.getElementById("wsState");
+		if (el) el.textContent = state;
+	}
+
+	function writeLog(line) {
+		var box = document.getElementById("debugLog");
+		if (!box) return;
+		var div = document.createElement("div");
+		div.className = "log-line";
+		div.textContent = line;
+		box.appendChild(div);
+		while (box.childNodes.length > 80) {
+			box.removeChild(box.firstChild);
 		}
-		playVideo();
-	} else {
-		userPressed = false;
-		video.pause();
+		box.scrollTop = box.scrollHeight;
 	}
-	updateUI();
-}
 
-function previousVideo() {
-	if (!isFinite(video.duration)) return;
-	video.currentTime = Math.max(0, video.currentTime - 10);
-}
-
-function nextVideo() {
-	if (!isFinite(video.duration)) return;
-	video.currentTime = Math.min(video.duration, video.currentTime + 10);
-}
-
-function seekVideo(value) {
-	if (!isFinite(video.duration)) return;
-	video.currentTime = (Number(value) / 100) * video.duration;
-}
-
-function changeVolume(value) {
-	video.volume = Number(value);
-	if (video.volume > 0) {
-		video.muted = false;
+	function updateMuteUI() {
+		var m = getMedia();
+		var muted = Boolean(m && (m.muted || m.volume === 0));
+		if (muteButton) muteButton.classList.toggle("is-muted", muted);
+		if (muteButtonBottom) muteButtonBottom.classList.toggle("is-muted", muted);
 	}
-}
 
-function toggleMute() {
-	video.muted = !video.muted;
-}
-
-function toggleRepeat() {
-	isLoop = !isLoop;
-	video.loop = isLoop;
-	repeatButton.style.opacity = isLoop ? "1" : ".55";
-	repeatButton.title = isLoop ? "Loop ON" : "Loop OFF";
-	updateLoopStatus();
-}
-
-function updateLoopStatus() {
-	var el = document.getElementById("dbgLoop");
-	if (el) el.textContent = isLoop ? "ON" : "OFF";
-}
-
-function syncDurationLabel() {
-	if (isFinite(video.duration) && video.duration > 0) {
-		durationLabel.textContent = formatTime(video.duration);
+	function updateLoopUI() {
+		var el = document.getElementById("dbgLoop");
+		if (el) el.textContent = isLoop ? "ON" : "OFF";
+		if (repeatButton) {
+			repeatButton.style.opacity = isLoop ? "1" : ".65";
+			repeatButton.classList.toggle("is-active", isLoop);
+			repeatButton.title = isLoop ? "Loop ON" : "Loop OFF";
+		}
 	}
-}
 
-video.addEventListener("loadedmetadata", syncDurationLabel);
-video.addEventListener("durationchange", syncDurationLabel);
-
-video.addEventListener("timeupdate", function() {
-	if (!isFinite(video.duration) || video.duration <= 0) return;
-	var value = (video.currentTime / video.duration) * 100;
-	progress.value = value;
-	currentTime.textContent = formatTime(video.currentTime);
-	durationLabel.textContent = formatTime(video.duration);
-});
-
-video.addEventListener("error", function() {
-	var code = video.error ? video.error.code : 0;
-	writeLog("Media element error (code=" + code + ")");
-	if (!directFallbackUsed && config.videoUrl && wsObjectUrl && video.src === wsObjectUrl) {
-		useNativeMediaFallback(config, "Blob decode gagal, coba stream langsung");
-		return;
+	function updateUI() {
+		var m = getMedia();
+		var paused = !m || m.paused;
+		if (smallPlayIcon) smallPlayIcon.style.display = paused ? "block" : "none";
+		if (smallPauseIcon) smallPauseIcon.style.display = paused ? "none" : "block";
+		if (playIcon) playIcon.style.display = paused ? "block" : "none";
+		if (pauseIcon) pauseIcon.style.display = paused ? "none" : "block";
+		if (frame) {
+			if (paused) frame.classList.remove("frame-playing");
+			else frame.classList.add("frame-playing");
+		}
+		updateMuteUI();
 	}
-	if (!wsAttempted && config.wsUrl && video.src === config.videoUrl) {
-		startWsProxy(config);
-		return;
+
+	function syncTimeUI() {
+		var m = getMedia();
+		if (!m || !isFinite(m.duration) || m.duration <= 0) return;
+		var value = (m.currentTime / m.duration) * 100;
+		if (progress) progress.value = String(value);
+		if (currentTime) currentTime.textContent = formatTime(m.currentTime);
+		if (durationLabel) durationLabel.textContent = formatTime(m.duration);
 	}
-	setWsState("MEDIA ERROR");
-});
 
-video.addEventListener("play", function() {
-	updateUI();
-});
-
-video.addEventListener("pause", function() {
-	updateUI();
-});
-
-video.addEventListener("ended", function() {
-	if (!isLoop) {
-		progress.value = 0;
-		currentTime.textContent = "0:00";
-		video.currentTime = 0;
-	}
-	updateUI();
-});
-
-var wsVideo = null;
-var wsChunks = [];
-var wsDownloaded = 0;
-var wsTotal = null;
-var wsMime = config.mime || "audio/mpeg";
-var wsObjectUrl = null;
-var wsDone = false;
-var wsLastLog = 0;
-
-function fmtSize(bytes) {
-	if (!isFinite(bytes)) return "0 B";
-	if (bytes >= 1048576) return (bytes / 1048576).toFixed(2) + " MB";
-	if (bytes >= 1024) return (bytes / 1024).toFixed(2) + " KB";
-	return bytes + " B";
-}
-
-function setWsState(state) {
-	var el = document.getElementById("wsState");
-	if (el) el.textContent = state;
-}
-
-function writeLog(line) {
-	var box = document.getElementById("debugLog");
-	if (!box) return;
-	var div = document.createElement("div");
-	div.className = "log-line";
-	div.textContent = line;
-	box.appendChild(div);
-	while (box.childNodes.length > 80) {
-		box.removeChild(box.firstChild);
-	}
-	box.scrollTop = box.scrollHeight;
-}
-
-function updateWsProgress() {
-	var el = document.getElementById("dbgDownloaded");
-	if (el) el.textContent = fmtSize(wsDownloaded);
-	if (wsTotal !== null && wsTotal > 0) {
-		var pct = Math.min(100, (wsDownloaded / wsTotal) * 100);
-		el = document.getElementById("dbgTotal");
-		if (el) el.textContent = fmtSize(wsTotal);
-		el = document.getElementById("dbgProgress");
-		if (el) el.textContent = pct.toFixed(1) + "%";
+	function updateBufferedUI() {
+		var m = getMedia();
+		if (!m || !m.buffered || m.buffered.length === 0 || !isFinite(m.duration) || m.duration <= 0) return;
+		var end = m.buffered.end(m.buffered.length - 1);
+		var pct = Math.min(100, Math.max(0, (end / m.duration) * 100));
+		var el = document.getElementById("dbgProgress");
+		if (el && !wsDone && !corsFetchAttempted) el.textContent = pct.toFixed(0) + "%";
 		el = document.getElementById("dbgBarFill");
-		if (el) el.style.width = pct.toFixed(1) + "%";
+		if (el && !wsDone && !corsFetchAttempted) el.style.width = pct.toFixed(1) + "%";
 	}
-	el = document.getElementById("dbgChunks");
-	if (el) el.textContent = String(wsChunks.length);
-}
 
-function finishWsDownload(cfg) {
-	if (wsDone) return;
-	if (!wsChunks.length || wsDownloaded <= 0) {
-		setWsState("EMPTY");
-		writeLog("Stream kosong");
-		return;
-	}
-	wsDone = true;
-	setWsState("COMPLETE");
-	writeLog("Download complete");
-	var mimeType = (wsMime && wsMime !== "application/octet-stream") ? wsMime : (cfg.mime || "audio/mpeg");
-	var blob = new Blob(wsChunks, { type: mimeType });
-	writeLog("Blob created (" + fmtSize(blob.size) + " | " + mimeType + ")");
-	if (wsObjectUrl) {
-		URL.revokeObjectURL(wsObjectUrl);
-	}
-	wsObjectUrl = URL.createObjectURL(blob);
-	writeLog("Media source attached");
-	video.src = wsObjectUrl;
-	video.load();
-	writeLog("Player ready");
-	if (wsVideo) {
-		try {
-			wsVideo.close();
-		} catch (e) {}
-	}
-	wsChunks = [];
-	if (cfg.autoplay || userPressed) {
-		setTimeout(function() {
-			playVideo();
-		}, 250);
-	}
-}
-
-function useNativeMediaFallback(cfg, reason) {
-	if (directFallbackUsed || !cfg.videoUrl) return;
-	directFallbackUsed = true;
-	setWsState("DIRECT STREAM");
-	writeLog(reason || "Fallback ke stream langsung...");
-	video.src = cfg.videoUrl;
-	video.load();
-	if (cfg.autoplay || userPressed) {
-		setTimeout(function() {
-			playVideo();
-		}, 250);
-	}
-}
-
-function startWsProxy(cfg) {
-	wsAttempted = true;
-	var wsUrl = cfg.wsUrl || "";
-	if (!wsUrl || typeof WebSocket === "undefined") {
-		useNativeMediaFallback(cfg, "WS tidak tersedia");
-		return;
-	}
-	wsChunks = [];
-	wsDownloaded = 0;
-	wsTotal = null;
-	wsDone = false;
-	writeLog("Connecting WS proxy...");
-	setWsState("CONNECTING WS");
-	try {
-		wsVideo = new WebSocket(wsUrl);
-	} catch (e) {
-		useNativeMediaFallback(cfg, "WS init gagal: " + e.message);
-		return;
-	}
-	wsVideo.binaryType = "arraybuffer";
-	var wsHandshakeTimer = setTimeout(function() {
-		if (!wsDone && wsDownloaded === 0) {
-			try { wsVideo.close(); } catch (e) {}
-			useNativeMediaFallback(cfg, "WS proxy timeout");
+	function updateWsProgress() {
+		var el = document.getElementById("dbgDownloaded");
+		if (el) el.textContent = fmtSize(wsDownloaded);
+		if (wsTotal !== null && wsTotal > 0) {
+			var pct = Math.min(100, (wsDownloaded / wsTotal) * 100);
+			el = document.getElementById("dbgTotal");
+			if (el) el.textContent = fmtSize(wsTotal);
+			el = document.getElementById("dbgProgress");
+			if (el) el.textContent = pct.toFixed(1) + "%";
+			el = document.getElementById("dbgBarFill");
+			if (el) el.style.width = pct.toFixed(1) + "%";
 		}
-	}, 10000);
-	wsVideo.onopen = function() {
-		writeLog("WebSocket OPEN");
-		setWsState("CONNECTED");
-	};
-	wsVideo.onmessage = function(event) {
-		if (typeof event.data === "string") {
-			var message = null;
-			try {
-				message = JSON.parse(event.data);
-			} catch (e) {}
-			if (!message) return;
-			if (message.type === "start") {
-				clearTimeout(wsHandshakeTimer);
-				if (message.mime && message.mime !== "application/octet-stream") {
-					wsMime = message.mime;
-				}
-				if (message.contentLength !== undefined && message.contentLength !== null) {
-					wsTotal = Number(message.contentLength);
-				} else if (message.length !== undefined && message.length !== null) {
-					wsTotal = Number(message.length);
-				}
-				var mimeEl = document.getElementById("dbgMime");
-				if (mimeEl) mimeEl.textContent = wsMime;
-				writeLog("START | MIME: " + wsMime);
-				if (wsTotal !== null && wsTotal > 0) {
-					writeLog("Size: " + fmtSize(wsTotal));
-				}
-				setWsState("DOWNLOADING");
-				updateWsProgress();
-				return;
+		el = document.getElementById("dbgChunks");
+		if (el) el.textContent = String(wsChunks.length);
+	}
+
+	function syncMediaSettings(target) {
+		if (!target) return;
+		var vol = volume ? Number(volume.value) : (config.volume !== undefined ? config.volume : 0.8);
+		target.volume = isFinite(vol) ? Math.min(1, Math.max(0, vol)) : 0.8;
+		target.loop = isLoop;
+		target.muted = activeMedia ? activeMedia.muted : false;
+	}
+
+	function playMediaNow() {
+		var m = getMedia();
+		if (!m) return;
+		if (!m.src && config.videoUrl) {
+			m.src = config.videoUrl;
+		}
+		try {
+			var result = m.play();
+			if (result && typeof result.then === "function") {
+				result.then(function () {
+					setWsState("PLAYING");
+					updateUI();
+				}).catch(function (err) {
+					var msg = err && err.message ? err.message : String(err || "play rejected");
+					writeLog("Play gagal: " + msg);
+					setWsState("PLAY BLOCKED");
+					updateUI();
+				});
 			}
-			if (message.type === "end") {
-				clearTimeout(wsHandshakeTimer);
-				writeLog("END");
-				finishWsDownload(cfg);
-				return;
-			}
-			if (message.type === "error") {
-				clearTimeout(wsHandshakeTimer);
-				writeLog("WS error: " + (message.message || "unknown"));
-				useNativeMediaFallback(cfg, "WS server error");
-				return;
-			}
+		} catch (err) {
+			writeLog("Play error: " + (err && err.message ? err.message : err));
+			setWsState("PLAY ERROR");
+		}
+		updateUI();
+	}
+
+	function toggleVideo() {
+		var m = getMedia();
+		if (!m) return;
+		if (m.paused) {
+			userPressed = true;
+			writeLog("Tombol Play ditekan");
+			playMediaNow();
+		} else {
+			userPressed = false;
+			m.pause();
+			setWsState("PAUSED");
+			writeLog("Paused");
+			updateUI();
+		}
+	}
+
+	function previousVideo() {
+		var m = getMedia();
+		if (!m || !isFinite(m.duration) || m.duration <= 0) {
+			writeLog("Media belum siap (-10s menunggu durasi)");
 			return;
 		}
-		clearTimeout(wsHandshakeTimer);
-		wsChunks.push(event.data);
-		var bytes = event.data.byteLength || 0;
-		wsDownloaded += bytes;
-		var now = Date.now();
-		if (now - wsLastLog > 400) {
-			wsLastLog = now;
-			writeLog("Binary chunk: " + fmtSize(bytes));
-		}
-		updateWsProgress();
-	};
-	wsVideo.onerror = function() {
-		clearTimeout(wsHandshakeTimer);
-		writeLog("WebSocket error");
-		if (!wsDone) useNativeMediaFallback(cfg, "WS gagal (502/blocked)");
-	};
-	wsVideo.onclose = function(event) {
-		clearTimeout(wsHandshakeTimer);
-		if (wsDone) {
-			setWsState("COMPLETE");
+		m.currentTime = Math.max(0, m.currentTime - 10);
+		syncTimeUI();
+		writeLog("Mundur -10s -> " + formatTime(m.currentTime));
+	}
+
+	function nextVideo() {
+		var m = getMedia();
+		if (!m || !isFinite(m.duration) || m.duration <= 0) {
+			writeLog("Media belum siap (+10s menunggu durasi)");
 			return;
 		}
-		writeLog("WebSocket closed (" + event.code + ")");
-		useNativeMediaFallback(cfg, "WS putus (" + event.code + ")");
-	};
-}
-
-function startVideoStream(cfg) {
-	var videoUrl = cfg.videoUrl || "";
-	var wsUrl = cfg.wsUrl || "";
-	var mimeEl = document.getElementById("dbgMime");
-	if (mimeEl) mimeEl.textContent = wsMime;
-	var serverEl = document.getElementById("wsServer");
-	if (serverEl) {
-		var host = "-";
-		try {
-			host = new URL(videoUrl || wsUrl).host;
-		} catch (e) {}
-		serverEl.textContent = host || "-";
-	}
-	if (!videoUrl && !wsUrl) {
-		setWsState("ERROR");
-		writeLog("No media URL tersedia");
-		return;
+		m.currentTime = Math.min(m.duration, m.currentTime + 10);
+		syncTimeUI();
+		writeLog("Maju +10s -> " + formatTime(m.currentTime));
 	}
 
-	window.addEventListener("beforeunload", function() {
-		if (wsVideo) {
-			try { wsVideo.close(); } catch (e) {}
-		}
-		if (wsObjectUrl) {
-			URL.revokeObjectURL(wsObjectUrl);
-		}
-	});
+	function seekVideo(value) {
+		var m = getMedia();
+		if (!m || !isFinite(m.duration) || m.duration <= 0) return;
+		m.currentTime = (Number(value) / 100) * m.duration;
+		syncTimeUI();
+	}
 
-	if (videoUrl && typeof fetch === "function") {
-		setWsState("FETCHING");
-		writeLog("Streaming langsung dari CDN...");
-		fetchController = typeof AbortController !== "undefined" ? new AbortController() : null;
-		fetch(videoUrl, {
-			mode: "cors",
-			signal: fetchController ? fetchController.signal : undefined
-		})
-			.then(function(res) {
+	function changeVolume(value) {
+		var val = Math.min(1, Math.max(0, Number(value)));
+		if (!isFinite(val)) return;
+		video.volume = val;
+		if (audioEl) audioEl.volume = val;
+		if (val > 0) {
+			video.muted = false;
+			if (audioEl) audioEl.muted = false;
+		}
+		updateMuteUI();
+	}
+
+	function toggleMute() {
+		var m = getMedia();
+		var nextMuted = !m.muted;
+		video.muted = nextMuted;
+		if (audioEl) audioEl.muted = nextMuted;
+		updateMuteUI();
+		writeLog(nextMuted ? "Mute ON" : "Mute OFF");
+	}
+
+	function toggleRepeat() {
+		isLoop = !isLoop;
+		video.loop = isLoop;
+		if (audioEl) audioEl.loop = isLoop;
+		updateLoopUI();
+		writeLog(isLoop ? "Loop ON" : "Loop OFF");
+	}
+
+	function finishBlobDownload(mimeType) {
+		if (wsDone || !wsChunks.length || wsDownloaded <= 0) return;
+		wsDone = true;
+		setWsState("COMPLETE");
+		writeLog("Download complete (" + fmtSize(wsDownloaded) + ")");
+		var blob = new Blob(wsChunks, { type: mimeType || config.mime || "audio/mpeg" });
+		if (wsObjectUrl) URL.revokeObjectURL(wsObjectUrl);
+		wsObjectUrl = URL.createObjectURL(blob);
+		wsChunks = [];
+		var m = getMedia();
+		m.src = wsObjectUrl;
+		m.load();
+		writeLog("Blob attached to player");
+		if (userPressed) playMediaNow();
+	}
+
+	function startCorsFetchFallback() {
+		if (corsFetchAttempted || !config.videoUrl || typeof fetch !== "function") {
+			if (!wsAttempted && config.wsUrl) startWsProxy(config);
+			return;
+		}
+		corsFetchAttempted = true;
+		wsChunks = [];
+		wsDownloaded = 0;
+		wsTotal = null;
+		wsDone = false;
+		setWsState("FETCH BLOB");
+		writeLog("Coba download via fetch...");
+		fetch(config.videoUrl, { mode: "cors" })
+			.then(function (res) {
 				if (!res.ok) throw new Error("HTTP " + res.status);
 				var ct = (res.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
-				if (ct.indexOf("text/html") === 0 || ct.indexOf("application/json") === 0) {
-					throw new Error("Non-media content-type: " + ct);
-				}
-				if (ct && ct !== "application/octet-stream") {
-					wsMime = ct;
-					if (mimeEl) mimeEl.textContent = wsMime;
-				}
+				if (ct && ct !== "application/octet-stream") wsMime = ct;
 				var cl = Number(res.headers.get("content-length") || 0);
 				if (cl > 0) wsTotal = cl;
-				setWsState("DOWNLOADING");
 				updateWsProgress();
-
 				if (res.body && typeof res.body.getReader === "function") {
 					var reader = res.body.getReader();
 					function pump() {
-						return reader.read().then(function(step) {
+						return reader.read().then(function (step) {
 							if (step.done) {
-								finishWsDownload(cfg);
+								finishBlobDownload(wsMime);
 								return;
 							}
 							var val = step.value;
 							if (val && val.byteLength) {
 								wsChunks.push(val);
 								wsDownloaded += val.byteLength;
-								var now = Date.now();
-								if (now - wsLastLog > 400) {
-									wsLastLog = now;
-									writeLog("Chunk: " + fmtSize(val.byteLength));
-								}
 								updateWsProgress();
 							}
 							return pump();
@@ -1116,34 +996,300 @@ function startVideoStream(cfg) {
 					}
 					return pump();
 				}
-				return res.arrayBuffer().then(function(buf) {
+				return res.arrayBuffer().then(function (buf) {
 					wsChunks.push(buf);
 					wsDownloaded += buf.byteLength;
 					updateWsProgress();
-					finishWsDownload(cfg);
+					finishBlobDownload(wsMime);
 				});
 			})
-			.catch(function(err) {
-				if (userAbortedFetch || (err && err.name === "AbortError")) return;
-				writeLog("Direct fetch gagal: " + (err && err.message ? err.message : "CORS/net"));
-				if (wsUrl && !wsAttempted) {
-					startWsProxy(cfg);
-				} else {
-					useNativeMediaFallback(cfg, "Langsung muat URL ke player");
-				}
+			.catch(function (err) {
+				writeLog("Fetch fallback gagal: " + (err && err.message ? err.message : "CORS/net"));
+				if (!wsAttempted && config.wsUrl) startWsProxy(config);
+				else setWsState("ERROR");
 			});
-		return;
 	}
 
-	if (wsUrl) {
-		startWsProxy(cfg);
+	function startWsProxy(cfg) {
+		wsAttempted = true;
+		var wsUrl = cfg.wsUrl || "";
+		if (!wsUrl || typeof WebSocket === "undefined") {
+			setWsState("ERROR");
+			return;
+		}
+		wsChunks = [];
+		wsDownloaded = 0;
+		wsTotal = null;
+		wsDone = false;
+		writeLog("Connecting WS proxy...");
+		setWsState("CONNECTING WS");
+		try {
+			wsVideo = new WebSocket(wsUrl);
+		} catch (e) {
+			writeLog("WS init gagal: " + e.message);
+			setWsState("WS ERROR");
+			return;
+		}
+		wsVideo.binaryType = "arraybuffer";
+		var wsHandshakeTimer = setTimeout(function () {
+			if (!wsDone && wsDownloaded === 0) {
+				try { wsVideo.close(); } catch (e) {}
+				writeLog("WS proxy timeout");
+				setWsState("WS TIMEOUT");
+			}
+		}, 10000);
+		wsVideo.onopen = function () {
+			writeLog("WebSocket OPEN");
+			setWsState("CONNECTED");
+		};
+		wsVideo.onmessage = function (event) {
+			if (typeof event.data === "string") {
+				var message = null;
+				try { message = JSON.parse(event.data); } catch (e) {}
+				if (!message) return;
+				if (message.type === "start") {
+					clearTimeout(wsHandshakeTimer);
+					if (message.mime && message.mime !== "application/octet-stream") wsMime = message.mime;
+					if (message.contentLength != null) wsTotal = Number(message.contentLength);
+					var mimeEl = document.getElementById("dbgMime");
+					if (mimeEl) mimeEl.textContent = wsMime;
+					setWsState("DOWNLOADING");
+					updateWsProgress();
+					return;
+				}
+				if (message.type === "end") {
+					clearTimeout(wsHandshakeTimer);
+					finishBlobDownload(wsMime);
+					try { wsVideo.close(); } catch (e) {}
+					return;
+				}
+				if (message.type === "error") {
+					clearTimeout(wsHandshakeTimer);
+					writeLog("WS error: " + (message.message || "unknown"));
+					setWsState("WS ERROR");
+					return;
+				}
+				return;
+			}
+			clearTimeout(wsHandshakeTimer);
+			wsChunks.push(event.data);
+			var bytes = event.data.byteLength || 0;
+			wsDownloaded += bytes;
+			var now = Date.now();
+			if (now - wsLastLog > 400) {
+				wsLastLog = now;
+				writeLog("Binary chunk: " + fmtSize(bytes));
+			}
+			updateWsProgress();
+		};
+		wsVideo.onerror = function () {
+			clearTimeout(wsHandshakeTimer);
+			writeLog("WebSocket error");
+			if (!wsDone) setWsState("WS ERROR");
+		};
+		wsVideo.onclose = function (event) {
+			clearTimeout(wsHandshakeTimer);
+			if (!wsDone) writeLog("WebSocket closed (" + event.code + ")");
+		};
+	}
+
+	function handleMediaError(el) {
+		if (el !== activeMedia) return;
+		var code = el.error ? el.error.code : 0;
+		writeLog("Media element error (code=" + code + ")");
+
+		if (config.isAudio && activeMedia === video && audioEl && !audioFallbackTried && config.videoUrl) {
+			audioFallbackTried = true;
+			try { video.pause(); video.removeAttribute("src"); } catch (e) {}
+			activeMedia = audioEl;
+			syncMediaSettings(audioEl);
+			audioEl.src = config.videoUrl;
+			writeLog("Switch ke <audio> player fallback...");
+			setWsState("AUDIO MODE");
+			if (userPressed) playMediaNow();
+			return;
+		}
+
+		if (!corsFetchAttempted) {
+			startCorsFetchFallback();
+		} else if (!wsAttempted && config.wsUrl) {
+			startWsProxy(config);
+		} else {
+			setWsState("MEDIA ERROR");
+		}
+	}
+
+	function attachMediaListeners(el) {
+		if (!el) return;
+		el.addEventListener("loadedmetadata", function () {
+			if (el !== activeMedia) return;
+			syncTimeUI();
+			updateBufferedUI();
+			setWsState(el.paused ? "READY" : "PLAYING");
+			writeLog("Metadata siap (" + formatTime(el.duration) + ")");
+		});
+		el.addEventListener("durationchange", function () {
+			if (el === activeMedia) syncTimeUI();
+		});
+		el.addEventListener("canplay", function () {
+			if (el === activeMedia && el.paused) setWsState("READY");
+		});
+		el.addEventListener("progress", function () {
+			if (el === activeMedia) updateBufferedUI();
+		});
+		el.addEventListener("timeupdate", function () {
+			if (el === activeMedia) syncTimeUI();
+		});
+		el.addEventListener("playing", function () {
+			if (el !== activeMedia) return;
+			setWsState("PLAYING");
+			updateUI();
+		});
+		el.addEventListener("waiting", function () {
+			if (el === activeMedia) setWsState("BUFFERING");
+		});
+		el.addEventListener("play", function () {
+			if (el === activeMedia) updateUI();
+		});
+		el.addEventListener("pause", function () {
+			if (el === activeMedia) updateUI();
+		});
+		el.addEventListener("ended", function () {
+			if (el !== activeMedia) return;
+			if (!isLoop) {
+				if (progress) progress.value = "0";
+				if (currentTime) currentTime.textContent = "0:00";
+				el.currentTime = 0;
+				setWsState("ENDED");
+			}
+			updateUI();
+		});
+		el.addEventListener("error", function () {
+			handleMediaError(el);
+		});
+	}
+
+	function bindControls() {
+		if (bigBtn) {
+			bigBtn.addEventListener("click", function (e) {
+				e.stopPropagation();
+				toggleVideo();
+			});
+		}
+		if (frame) {
+			frame.addEventListener("click", function (e) {
+				if (e.target && e.target.closest && e.target.closest("#bigBtn")) return;
+				toggleVideo();
+			});
+		}
+		if (playPauseBtn) {
+			playPauseBtn.addEventListener("click", function (e) {
+				e.stopPropagation();
+				toggleVideo();
+			});
+		}
+		if (prevBtn) {
+			prevBtn.addEventListener("click", function (e) {
+				e.stopPropagation();
+				previousVideo();
+			});
+		}
+		if (nextBtn) {
+			nextBtn.addEventListener("click", function (e) {
+				e.stopPropagation();
+				nextVideo();
+			});
+		}
+		if (repeatButton) {
+			repeatButton.addEventListener("click", function (e) {
+				e.stopPropagation();
+				toggleRepeat();
+			});
+		}
+		if (muteButton) {
+			muteButton.addEventListener("click", function (e) {
+				e.stopPropagation();
+				toggleMute();
+			});
+		}
+		if (muteButtonBottom) {
+			muteButtonBottom.addEventListener("click", function (e) {
+				e.stopPropagation();
+				toggleMute();
+			});
+		}
+		if (progress) {
+			progress.addEventListener("input", function () { seekVideo(this.value); });
+			progress.addEventListener("change", function () { seekVideo(this.value); });
+		}
+		if (volume) {
+			volume.addEventListener("input", function () { changeVolume(this.value); });
+			volume.addEventListener("change", function () { changeVolume(this.value); });
+		}
+	}
+
+	function init() {
+		if (songTitle) songTitle.textContent = config.title || "Unknown Video";
+		if (artist) artist.textContent = config.channel || "Unknown Channel";
+		if (playlistSub) playlistSub.textContent = config.title || "Unknown Video";
+		if (config.duration && durationLabel) durationLabel.textContent = config.duration;
+
+		var yearEl = document.getElementById("year");
+		if (yearEl) yearEl.textContent = String(new Date().getFullYear());
+
+		if (video.poster && background) {
+			background.style.backgroundImage = "url('" + video.poster + "')";
+		}
+
+		if (config.volume !== undefined && volume) {
+			volume.value = String(config.volume);
+		}
+		syncMediaSettings(video);
+		updateLoopUI();
+		updateUI();
+
+		var mimeEl = document.getElementById("dbgMime");
+		if (mimeEl) mimeEl.textContent = wsMime;
+		var serverEl = document.getElementById("wsServer");
+		if (serverEl) {
+			var host = "-";
+			try { host = new URL(config.videoUrl || config.wsUrl).host; } catch (e) {}
+			serverEl.textContent = host || "-";
+		}
+
+		attachMediaListeners(video);
+		attachMediaListeners(audioEl);
+		bindControls();
+
+		if (config.videoUrl) {
+			video.src = config.videoUrl;
+			setWsState("STREAM READY");
+			writeLog("Stream langsung terpasang (" + wsMime + ")");
+			if (config.autoplay) {
+				userPressed = true;
+				playMediaNow();
+			}
+		} else if (config.wsUrl) {
+			startWsProxy(config);
+		} else {
+			setWsState("ERROR");
+			writeLog("No media URL tersedia");
+		}
+
+		window.addEventListener("beforeunload", function () {
+			if (wsVideo) { try { wsVideo.close(); } catch (e) {} }
+			if (wsObjectUrl) { URL.revokeObjectURL(wsObjectUrl); }
+		});
+	}
+
+	if (document.readyState === "loading") {
+		document.addEventListener("DOMContentLoaded", init);
 	} else {
-		useNativeMediaFallback(cfg, "Langsung muat URL ke player");
+		init();
 	}
-}
-
-startVideoStream(config);
-</script>`;
+})();
+</script>
+</body>`;
 
   return htmlPayload;
 }

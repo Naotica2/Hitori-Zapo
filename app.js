@@ -4,6 +4,7 @@
  */
 
 import { createMediaWsServer } from './src/ws/mediaServer.js'
+import './lib/chatTheme.js'
 import { createStore, WaClient } from 'zapo-js'
 import { createSqliteStore } from '@zapo-js/store-sqlite'
 import { createMediaProcessor } from '@zapo-js/media-utils'
