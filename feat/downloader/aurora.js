@@ -565,8 +565,8 @@ to{background-position:300% 0}
 				</div>
 
 				<div class="video-frame" id="videoFrame">
-					<video id="videoPlayer" playsinline webkit-playsinline preload="metadata" poster="${escapeHtml(thumbnailb64)}"></video>
-					<audio id="audioPlayer" playsinline webkit-playsinline preload="metadata" style="display:none"></audio>
+					<video id="videoPlayer" playsinline webkit-playsinline preload="auto" poster="${escapeHtml(thumbnailb64)}"></video>
+					<audio id="audioPlayer" playsinline webkit-playsinline preload="auto"></audio>
 					<div class="big-play" id="bigPlay">
 						<button class="big-btn" type="button" id="bigBtn" aria-label="Play or Pause">
 							<svg id="playIcon" viewBox="0 0 24 24">
@@ -714,11 +714,13 @@ to{background-position:300% 0}
 	var playlistSub = document.getElementById("playlistSub");
 	var background = document.getElementById("background");
 
-	var activeMedia = video;
+	var activeMedia = (config.isAudio && audioEl) ? audioEl : video;
 	var isLoop = Boolean(config.loop);
 	var userPressed = false;
 	var audioFallbackTried = false;
+	var directFallbackTried = false;
 	var corsFetchAttempted = false;
+	var corsFetching = false;
 	var wsAttempted = false;
 	var wsVideo = null;
 	var wsChunks = [];
@@ -731,6 +733,12 @@ to{background-position:300% 0}
 
 	function getMedia() {
 		return activeMedia || video;
+	}
+
+	function hasMediaSource(m) {
+		if (!m) return false;
+		var s = m.getAttribute("src") || m.currentSrc || "";
+		return Boolean(s && s.trim());
 	}
 
 	function fmtSize(bytes) {
@@ -844,8 +852,17 @@ to{background-position:300% 0}
 	function playMediaNow() {
 		var m = getMedia();
 		if (!m) return;
-		if (!m.src && config.videoUrl) {
-			m.src = config.videoUrl;
+		if (!hasMediaSource(m)) {
+			userPressed = true;
+			setWsState(corsFetching ? "LOADING BLOB" : "BUFFERING");
+			writeLog("Media masih dimuat, otomatis diputar saat siap...");
+			if (!corsFetchAttempted && config.videoUrl) {
+				startCorsFetchFallback();
+			} else if (!directFallbackTried && !corsFetching && config.videoUrl) {
+				tryDirectUrlFallback();
+			}
+			updateUI();
+			return;
 		}
 		try {
 			var result = m.play();
@@ -854,9 +871,19 @@ to{background-position:300% 0}
 					setWsState("PLAYING");
 					updateUI();
 				}).catch(function (err) {
+					var name = err && err.name ? err.name : "";
 					var msg = err && err.message ? err.message : String(err || "play rejected");
-					writeLog("Play gagal: " + msg);
-					setWsState("PLAY BLOCKED");
+					if (name === "NotAllowedError") {
+						userPressed = false;
+						setWsState("TAP PLAY");
+						writeLog("Buffer siap! Tap tombol Play sekali lagi untuk memutar.");
+					} else {
+						writeLog("Play gagal: " + msg);
+						setWsState("PLAY BLOCKED");
+						if (!wsDone && !directFallbackTried && config.videoUrl) {
+							tryDirectUrlFallback();
+						}
+					}
 					updateUI();
 				});
 			}
@@ -870,6 +897,16 @@ to{background-position:300% 0}
 	function toggleVideo() {
 		var m = getMedia();
 		if (!m) return;
+		if (!hasMediaSource(m)) {
+			userPressed = !userPressed;
+			if (userPressed) {
+				playMediaNow();
+			} else {
+				setWsState("LOADING BLOB");
+				writeLog("Auto-play dibatalkan sambil menunggu buffer");
+			}
+			return;
+		}
 		if (m.paused) {
 			userPressed = true;
 			writeLog("Tombol Play ditekan");
@@ -942,33 +979,50 @@ to{background-position:300% 0}
 	}
 
 	function finishBlobDownload(mimeType) {
+		corsFetching = false;
 		if (wsDone || !wsChunks.length || wsDownloaded <= 0) return;
 		wsDone = true;
-		setWsState("COMPLETE");
-		writeLog("Download complete (" + fmtSize(wsDownloaded) + ")");
-		var blob = new Blob(wsChunks, { type: mimeType || config.mime || "audio/mpeg" });
+		var safeMime = mimeType || config.mime || (config.isAudio ? "audio/mpeg" : "video/mp4");
+		setWsState("READY");
+		writeLog("Download complete (" + fmtSize(wsDownloaded) + ", " + safeMime + ")");
+		var blob = new Blob(wsChunks, { type: safeMime });
 		if (wsObjectUrl) URL.revokeObjectURL(wsObjectUrl);
 		wsObjectUrl = URL.createObjectURL(blob);
 		wsChunks = [];
 		var m = getMedia();
+		syncMediaSettings(m);
 		m.src = wsObjectUrl;
 		m.load();
-		writeLog("Blob attached to player");
+		writeLog("Blob attached to " + (m === audioEl ? "<audio>" : "<video>"));
 		if (userPressed) playMediaNow();
+	}
+
+	function tryDirectUrlFallback() {
+		if (directFallbackTried || !config.videoUrl) return false;
+		directFallbackTried = true;
+		var m = getMedia();
+		syncMediaSettings(m);
+		m.src = config.videoUrl;
+		m.load();
+		setWsState("DIRECT STREAM");
+		writeLog("Fallback stream langsung (" + wsMime + ")");
+		if (userPressed) playMediaNow();
+		return true;
 	}
 
 	function startCorsFetchFallback() {
 		if (corsFetchAttempted || !config.videoUrl || typeof fetch !== "function") {
-			if (!wsAttempted && config.wsUrl) startWsProxy(config);
+			if (!tryDirectUrlFallback() && !wsAttempted && config.wsUrl) startWsProxy(config);
 			return;
 		}
 		corsFetchAttempted = true;
+		corsFetching = true;
 		wsChunks = [];
 		wsDownloaded = 0;
 		wsTotal = null;
 		wsDone = false;
-		setWsState("FETCH BLOB");
-		writeLog("Coba download via fetch...");
+		setWsState("LOADING BLOB");
+		writeLog("Memuat media via fetch blob...");
 		fetch(config.videoUrl, { mode: "cors" })
 			.then(function (res) {
 				if (!res.ok) throw new Error("HTTP " + res.status);
@@ -1004,9 +1058,12 @@ to{background-position:300% 0}
 				});
 			})
 			.catch(function (err) {
-				writeLog("Fetch fallback gagal: " + (err && err.message ? err.message : "CORS/net"));
-				if (!wsAttempted && config.wsUrl) startWsProxy(config);
-				else setWsState("ERROR");
+				corsFetching = false;
+				writeLog("Fetch blob gagal: " + (err && err.message ? err.message : "CORS/net"));
+				if (!tryDirectUrlFallback()) {
+					if (!wsAttempted && config.wsUrl) startWsProxy(config);
+					else setWsState("ERROR");
+				}
 			});
 	}
 
@@ -1098,20 +1155,29 @@ to{background-position:300% 0}
 		var code = el.error ? el.error.code : 0;
 		writeLog("Media element error (code=" + code + ")");
 
-		if (config.isAudio && activeMedia === video && audioEl && !audioFallbackTried && config.videoUrl) {
-			audioFallbackTried = true;
-			try { video.pause(); video.removeAttribute("src"); } catch (e) {}
-			activeMedia = audioEl;
-			syncMediaSettings(audioEl);
-			audioEl.src = config.videoUrl;
-			writeLog("Switch ke <audio> player fallback...");
-			setWsState("AUDIO MODE");
-			if (userPressed) playMediaNow();
+		if (!corsFetchAttempted && config.videoUrl) {
+			startCorsFetchFallback();
 			return;
 		}
 
-		if (!corsFetchAttempted) {
-			startCorsFetchFallback();
+		if (config.isAudio && activeMedia === video && audioEl && !audioFallbackTried) {
+			audioFallbackTried = true;
+			var fallbackSrc = wsObjectUrl || config.videoUrl;
+			if (fallbackSrc) {
+				try { video.pause(); video.removeAttribute("src"); } catch (e) {}
+				activeMedia = audioEl;
+				syncMediaSettings(audioEl);
+				audioEl.src = fallbackSrc;
+				audioEl.load();
+				writeLog("Switch ke <audio> player...");
+				setWsState("AUDIO MODE");
+				if (userPressed) playMediaNow();
+				return;
+			}
+		}
+
+		if (wsDone && config.videoUrl && !directFallbackTried) {
+			tryDirectUrlFallback();
 		} else if (!wsAttempted && config.wsUrl) {
 			startWsProxy(config);
 		} else {
@@ -1237,14 +1303,19 @@ to{background-position:300% 0}
 		var yearEl = document.getElementById("year");
 		if (yearEl) yearEl.textContent = String(new Date().getFullYear());
 
-		if (video.poster && background) {
-			background.style.backgroundImage = "url('" + video.poster + "')";
+		if (video.poster) {
+			if (background) background.style.backgroundImage = "url('" + video.poster + "')";
+			if (frame) {
+				frame.style.backgroundImage = "url('" + video.poster + "')";
+				frame.style.backgroundSize = "cover";
+				frame.style.backgroundPosition = "center";
+			}
 		}
 
 		if (config.volume !== undefined && volume) {
 			volume.value = String(config.volume);
 		}
-		syncMediaSettings(video);
+		syncMediaSettings(getMedia());
 		updateLoopUI();
 		updateUI();
 
@@ -1262,13 +1333,7 @@ to{background-position:300% 0}
 		bindControls();
 
 		if (config.videoUrl) {
-			video.src = config.videoUrl;
-			setWsState("STREAM READY");
-			writeLog("Stream langsung terpasang (" + wsMime + ")");
-			if (config.autoplay) {
-				userPressed = true;
-				playMediaNow();
-			}
+			startCorsFetchFallback();
 		} else if (config.wsUrl) {
 			startWsProxy(config);
 		} else {
@@ -1360,7 +1425,14 @@ export default {
         isAudio
       });
 
-      const sent = await sendRichHtml(ctx, htmlPayload);
+      const trustedSources = [
+        data.url,
+        API_BASE,
+        'https://jhx.my.id'
+      ];
+      if (wsUrl) trustedSources.push(wsUrl);
+
+      const sent = await sendRichHtml(ctx, htmlPayload, { trustedSources });
 
       console.log('[Aurora] sent via richHtml | id=' + (sent?.id || '?'));
       await ctx.react('🎛️');

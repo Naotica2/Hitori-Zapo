@@ -28,7 +28,8 @@ const HELP_TEXT =
   '*Pakai Gambar / Link:*\n' +
   '• Kirim / reply gambar dengan `.tema`\n' +
   '• `.tema https://example.com/wallpaper.jpg`\n' +
-  '• `.tema <url> --dim 30 --scheme blue`\n\n' +
+  '• `.tema <url> --dim 30 --scheme blue`\n' +
+  '• `.tema --full` (pakai blur 9:16 tanpa crop gambar)\n\n' +
   '*Pakai Preset / Warna:*\n' +
   '• `.tema blue` / `pink` / `purple` / `minimal` / `dark`\n' +
   '• `.tema --solid #1E293B` (atau `.tema --solid biru`)\n' +
@@ -110,20 +111,25 @@ function parseTemaArgs(rawText) {
     dim: undefined,
     doodle: undefined,
     stock: undefined,
+    fit: 'cover',
     url: undefined
   }
 
-  text = text.replace(/--(scheme|tema|color|solid|dim|stock)(?:=|\s+)(\S+)/gi, (_, k, v) => {
+  text = text.replace(/--(scheme|tema|color|solid|dim|stock|fit)(?:=|\s+)(\S+)/gi, (_, k, v) => {
     const key = k.toLowerCase()
     if (key === 'scheme' || key === 'tema') opts.scheme = v
     else if (key === 'color' || key === 'solid') opts.solid = v
     else if (key === 'dim') opts.dim = v
     else if (key === 'stock') opts.stock = v
+    else if (key === 'fit') opts.fit = v.toLowerCase() === 'blur' || v.toLowerCase() === 'full' ? 'blur' : 'cover'
     return ' '
   })
 
-  text = text.replace(/--(no-?doodle|doodle)\b/gi, (_, flag) => {
-    opts.doodle = !flag.toLowerCase().startsWith('no')
+  text = text.replace(/--(no-?doodle|doodle|full|blur|cover)\b/gi, (_, flag) => {
+    const f = flag.toLowerCase()
+    if (f === 'full' || f === 'blur') opts.fit = 'blur'
+    else if (f === 'cover') opts.fit = 'cover'
+    else opts.doodle = !f.startsWith('no')
     return ' '
   })
 
@@ -304,6 +310,7 @@ export default {
 
       const applied = await setChatTheme(ctx.client, ctx.chat, {
         imageBuffer,
+        imageFit: opts.fit,
         colorSchemeId: resolvedScheme,
         isDoodleEnabled: autoDoodle,
         dimLevel: normalizeDimLevel(opts.dim, 0),
