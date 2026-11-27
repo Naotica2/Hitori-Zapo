@@ -48,7 +48,7 @@ export async function checkGameAnswer(client, event) {
     if (event.key.fromMe) return
     const chat = event.key.remoteJid
     const ctx = buildContext(client, event)
-    const body = (ctx.body ?? '').trim().toLowerCase()
+    const body = (ctx.body ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
     if (!body) return
     if (config.prefixes.some((p) => body.startsWith(p))) return
 

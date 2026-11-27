@@ -12,6 +12,7 @@ export const CURRENCY = {
 
 export const REWARD_PRESETS = {
   tebakkata: { gold: 10, xp: 5, gems: 0 },
+  tebakgambar: { gold: 20, xp: 12, gems: 0 },
   math: { gold: 15, xp: 8, gems: 0 },
   // Nanti tinggal tambah game lain di sini bray
 }

@@ -5,6 +5,7 @@
 
 import config from '../../config.js';
 import { sendRichHtml } from '../../lib/richHtml.js';
+import { ytdl } from '../../scraper/YT-DL.js';
 
 const API_BASE = 'https://api.jhx.my.id';
 const API_HEADERS = {
@@ -31,18 +32,51 @@ async function ytSearch(query) {
 }
 
 async function ytDownload(url, format) {
-  const res = await fetch(API_BASE + '/yt-download', {
-    method: 'POST', headers: API_HEADERS,
-    body: JSON.stringify({ url, format }),
-    signal: AbortSignal.timeout(120000)
-  });
-  const text = await res.text();
-  let json = null;
-  try { json = JSON.parse(text); } catch {}
-  if (!res.ok || !json || !json.Status || !json.data || !json.data.url) {
-    throw new Error(`Download format "${format}" gagal: HTTP ${res.status} ${text.slice(0, 140)}`);
+  let primaryErr = null;
+  try {
+    const res = await fetch(API_BASE + '/yt-download', {
+      method: 'POST', headers: API_HEADERS,
+      body: JSON.stringify({ url, format }),
+      signal: AbortSignal.timeout(90000)
+    });
+    const text = await res.text();
+    let json = null;
+    try { json = JSON.parse(text); } catch {}
+    if (res.ok && json && json.Status && json.data && json.data.url) {
+      return json.data;
+    }
+    primaryErr = json?.error || `HTTP ${res.status} ${text.slice(0, 120)}`;
+  } catch (err) {
+    primaryErr = err?.message || String(err);
   }
-  return json.data;
+
+  // Fallback ke scraper YT-DL (savenow) bila api.jhx.my.id gagal/timeout
+  const fallback = await ytdl.download(url, format).catch(() => null);
+  if (fallback && !fallback.error && fallback.download_url) {
+    return {
+      url: fallback.download_url,
+      title: fallback.title || '',
+      thumbnail: fallback.image || '',
+      format
+    };
+  }
+
+  throw new Error(`Download format "${format}" gagal: ${primaryErr || fallback?.error || 'unknown error'}`);
+}
+
+function inferMimeFromFormat(format, mediaUrl = '') {
+  const f = String(format || '').toLowerCase();
+  if (f === 'mp3') return 'audio/mpeg';
+  if (f === 'm4a' || f === 'aac') return 'audio/mp4';
+  if (f === 'ogg' || f === 'opus') return 'audio/ogg';
+  if (f === 'wav') return 'audio/wav';
+  if (f === 'flac') return 'audio/flac';
+  if (/^\d{3,4}$/.test(f) || f === '4k') return 'video/mp4';
+  const cleanUrl = String(mediaUrl).split('?')[0].toLowerCase();
+  if (cleanUrl.endsWith('.mp3')) return 'audio/mpeg';
+  if (cleanUrl.endsWith('.m4a')) return 'audio/mp4';
+  if (cleanUrl.endsWith('.webm')) return 'video/webm';
+  return 'video/mp4';
 }
 
 async function thumbDataUri(url) {
@@ -65,13 +99,15 @@ const escapeHtmlJs = (value) =>
     .replace(/\$\{/g, '\\${')
     .replace(/</g, '\\x3C');
 
-function buildHtml({ finalTitle, finalChannel, finalDuration, videoUrl, thumbnailb64, wsUrl }) {
+function buildHtml({ finalTitle, finalChannel, finalDuration, videoUrl, thumbnailb64, wsUrl, mime, isAudio }) {
   const cfg = {
     title: finalTitle,
     channel: finalChannel,
     duration: finalDuration,
     videoUrl,
     wsUrl,
+    mime: mime || 'video/mp4',
+    isAudio: Boolean(isAudio),
     autoplay: false,
     volume: 0.8,
     loop: false
@@ -477,7 +513,7 @@ to{background-position:300% 0}
 			<div class="content">
 				<div class="top">
 					<div>
-						<div class="top-title" id="playlistTitle">NOW PLAYING VIDEO</div>
+						<div class="top-title" id="playlistTitle">${cfg.isAudio ? 'NOW PLAYING AUDIO' : 'NOW PLAYING VIDEO'}</div>
 						<div class="top-sub" id="playlistSub">${escapeHtmlJs(finalTitle)}</div>
 					</div>
 					<button class="icon-btn" type="button" onclick="toggleMute()" id="muteButton">
@@ -490,7 +526,7 @@ to{background-position:300% 0}
 				</div>
 
 				<div class="video-frame" id="videoFrame" onclick="toggleVideo()">
-					<video id="videoPlayer" playsinline webkit-playsinline preload="none" poster="${thumbnailb64}"></video>
+					<video id="videoPlayer" playsinline webkit-playsinline preload="metadata" poster="${thumbnailb64}"></video>
 					<div class="big-play" id="bigPlay">
 						<button class="big-btn" type="button" onclick="event.stopPropagation();toggleVideo()">
 							<svg id="playIcon" viewBox="0 0 24 24">
@@ -617,6 +653,8 @@ window.VIDEO_CONFIG = {
 	duration: "${escapeHtmlJs(cfg.duration)}",
 	videoUrl: "${escapeHtmlJs(cfg.videoUrl)}",
 	wsUrl: "${escapeHtmlJs(cfg.wsUrl)}",
+	mime: "${escapeHtmlJs(cfg.mime)}",
+	isAudio: ${cfg.isAudio},
 	autoplay: ${cfg.autoplay},
 	volume: ${cfg.volume},
 	loop: ${cfg.loop}
@@ -636,12 +674,19 @@ var repeatButton = document.getElementById("repeatButton");
 var playlistSub = document.getElementById("playlistSub");
 var isLoop = false;
 var userPressed = false;
+var directFallbackUsed = false;
+var fetchController = null;
+var userAbortedFetch = false;
+var wsAttempted = false;
 
 var config = window.VIDEO_CONFIG || {};
 var background = document.getElementById("background");
 songTitle.textContent = config.title || "Unknown Video";
 artist.textContent = config.channel || "Unknown Channel";
 playlistSub.textContent = config.title || "Unknown Video";
+if (config.duration) {
+	durationLabel.textContent = config.duration;
+}
 
 var yearEl = document.getElementById("year");
 if (yearEl) yearEl.textContent = new Date().getFullYear();
@@ -688,7 +733,23 @@ function playVideo() {
 
 function toggleVideo() {
 	if (video.paused) {
-		if (!video.src) userPressed = true;
+		if (!video.src) {
+			userPressed = true;
+			if (config.videoUrl) {
+				userAbortedFetch = true;
+				if (fetchController) {
+					try { fetchController.abort(); } catch (e) {}
+				}
+				if (wsVideo) {
+					try { wsVideo.close(); } catch (e) {}
+				}
+				useNativeMediaFallback(config, "Play instan via stream langsung...");
+				playVideo();
+				return;
+			}
+			writeLog("Menunggu media selesai dimuat...");
+			return;
+		}
 		playVideo();
 	} else {
 		userPressed = false;
@@ -736,16 +797,35 @@ function updateLoopStatus() {
 	if (el) el.textContent = isLoop ? "ON" : "OFF";
 }
 
-video.addEventListener("loadedmetadata", function() {
-	durationLabel.textContent = formatTime(video.duration);
-});
+function syncDurationLabel() {
+	if (isFinite(video.duration) && video.duration > 0) {
+		durationLabel.textContent = formatTime(video.duration);
+	}
+}
+
+video.addEventListener("loadedmetadata", syncDurationLabel);
+video.addEventListener("durationchange", syncDurationLabel);
 
 video.addEventListener("timeupdate", function() {
-	if (!isFinite(video.duration)) return;
+	if (!isFinite(video.duration) || video.duration <= 0) return;
 	var value = (video.currentTime / video.duration) * 100;
 	progress.value = value;
 	currentTime.textContent = formatTime(video.currentTime);
 	durationLabel.textContent = formatTime(video.duration);
+});
+
+video.addEventListener("error", function() {
+	var code = video.error ? video.error.code : 0;
+	writeLog("Media element error (code=" + code + ")");
+	if (!directFallbackUsed && config.videoUrl && wsObjectUrl && video.src === wsObjectUrl) {
+		useNativeMediaFallback(config, "Blob decode gagal, coba stream langsung");
+		return;
+	}
+	if (!wsAttempted && config.wsUrl && video.src === config.videoUrl) {
+		startWsProxy(config);
+		return;
+	}
+	setWsState("MEDIA ERROR");
 });
 
 video.addEventListener("play", function() {
@@ -769,7 +849,7 @@ var wsVideo = null;
 var wsChunks = [];
 var wsDownloaded = 0;
 var wsTotal = null;
-var wsMime = "video/mp4";
+var wsMime = config.mime || "audio/mpeg";
 var wsObjectUrl = null;
 var wsDone = false;
 var wsLastLog = 0;
@@ -817,18 +897,22 @@ function updateWsProgress() {
 
 function finishWsDownload(cfg) {
 	if (wsDone) return;
+	if (!wsChunks.length || wsDownloaded <= 0) {
+		setWsState("EMPTY");
+		writeLog("Stream kosong");
+		return;
+	}
 	wsDone = true;
 	setWsState("COMPLETE");
 	writeLog("Download complete");
-	var blob = new Blob(wsChunks, {
-		type: wsMime || "video/mp4"
-	});
-	writeLog("Blob created (" + fmtSize(blob.size) + ")");
+	var mimeType = (wsMime && wsMime !== "application/octet-stream") ? wsMime : (cfg.mime || "audio/mpeg");
+	var blob = new Blob(wsChunks, { type: mimeType });
+	writeLog("Blob created (" + fmtSize(blob.size) + " | " + mimeType + ")");
 	if (wsObjectUrl) {
 		URL.revokeObjectURL(wsObjectUrl);
 	}
 	wsObjectUrl = URL.createObjectURL(blob);
-	writeLog("Video source attached");
+	writeLog("Media source attached");
 	video.src = wsObjectUrl;
 	video.load();
 	writeLog("Player ready");
@@ -841,35 +925,50 @@ function finishWsDownload(cfg) {
 	if (cfg.autoplay || userPressed) {
 		setTimeout(function() {
 			playVideo();
-		}, 300);
+		}, 250);
 	}
 }
 
-function startVideoStream(cfg) {
-	var videoUrl = cfg.videoUrl || "";
+function useNativeMediaFallback(cfg, reason) {
+	if (directFallbackUsed || !cfg.videoUrl) return;
+	directFallbackUsed = true;
+	setWsState("DIRECT STREAM");
+	writeLog(reason || "Fallback ke stream langsung...");
+	video.src = cfg.videoUrl;
+	video.load();
+	if (cfg.autoplay || userPressed) {
+		setTimeout(function() {
+			playVideo();
+		}, 250);
+	}
+}
+
+function startWsProxy(cfg) {
+	wsAttempted = true;
 	var wsUrl = cfg.wsUrl || "";
-	var serverEl = document.getElementById("wsServer");
-	if (serverEl) {
-		var host = "-";
-		try {
-			host = new URL(wsUrl).host;
-		} catch (e) {}
-		serverEl.textContent = host || "-";
-	}
-	if (!wsUrl) {
-		setWsState("ERROR");
-		writeLog("No video URL tersedia");
+	if (!wsUrl || typeof WebSocket === "undefined") {
+		useNativeMediaFallback(cfg, "WS tidak tersedia");
 		return;
 	}
-	if (typeof WebSocket === "undefined") {
-		setWsState("ERROR");
-		writeLog("WebSocket API tidak tersedia");
+	wsChunks = [];
+	wsDownloaded = 0;
+	wsTotal = null;
+	wsDone = false;
+	writeLog("Connecting WS proxy...");
+	setWsState("CONNECTING WS");
+	try {
+		wsVideo = new WebSocket(wsUrl);
+	} catch (e) {
+		useNativeMediaFallback(cfg, "WS init gagal: " + e.message);
 		return;
 	}
-	writeLog("Connecting...");
-	setWsState("CONNECTING");
-	wsVideo = new WebSocket(wsUrl);
 	wsVideo.binaryType = "arraybuffer";
+	var wsHandshakeTimer = setTimeout(function() {
+		if (!wsDone && wsDownloaded === 0) {
+			try { wsVideo.close(); } catch (e) {}
+			useNativeMediaFallback(cfg, "WS proxy timeout");
+		}
+	}, 10000);
 	wsVideo.onopen = function() {
 		writeLog("WebSocket OPEN");
 		setWsState("CONNECTED");
@@ -882,7 +981,10 @@ function startVideoStream(cfg) {
 			} catch (e) {}
 			if (!message) return;
 			if (message.type === "start") {
-				wsMime = message.mime || "video/mp4";
+				clearTimeout(wsHandshakeTimer);
+				if (message.mime && message.mime !== "application/octet-stream") {
+					wsMime = message.mime;
+				}
 				if (message.contentLength !== undefined && message.contentLength !== null) {
 					wsTotal = Number(message.contentLength);
 				} else if (message.length !== undefined && message.length !== null) {
@@ -899,17 +1001,20 @@ function startVideoStream(cfg) {
 				return;
 			}
 			if (message.type === "end") {
+				clearTimeout(wsHandshakeTimer);
 				writeLog("END");
-				finishWsDownload(config);
+				finishWsDownload(cfg);
 				return;
 			}
 			if (message.type === "error") {
-				writeLog("Server error: " + (message.message || "unknown"));
-				setWsState("ERROR");
+				clearTimeout(wsHandshakeTimer);
+				writeLog("WS error: " + (message.message || "unknown"));
+				useNativeMediaFallback(cfg, "WS server error");
 				return;
 			}
 			return;
 		}
+		clearTimeout(wsHandshakeTimer);
 		wsChunks.push(event.data);
 		var bytes = event.data.byteLength || 0;
 		wsDownloaded += bytes;
@@ -921,28 +1026,120 @@ function startVideoStream(cfg) {
 		updateWsProgress();
 	};
 	wsVideo.onerror = function() {
+		clearTimeout(wsHandshakeTimer);
 		writeLog("WebSocket error");
-		setWsState("ERROR");
+		if (!wsDone) useNativeMediaFallback(cfg, "WS gagal (502/blocked)");
 	};
 	wsVideo.onclose = function(event) {
+		clearTimeout(wsHandshakeTimer);
 		if (wsDone) {
 			setWsState("COMPLETE");
 			return;
 		}
-		writeLog("WebSocket closed unexpectedly");
-		writeLog("Code: " + event.code + " Reason: " + (event.reason || "-"));
-		setWsState("CLOSED");
+		writeLog("WebSocket closed (" + event.code + ")");
+		useNativeMediaFallback(cfg, "WS putus (" + event.code + ")");
 	};
+}
+
+function startVideoStream(cfg) {
+	var videoUrl = cfg.videoUrl || "";
+	var wsUrl = cfg.wsUrl || "";
+	var mimeEl = document.getElementById("dbgMime");
+	if (mimeEl) mimeEl.textContent = wsMime;
+	var serverEl = document.getElementById("wsServer");
+	if (serverEl) {
+		var host = "-";
+		try {
+			host = new URL(videoUrl || wsUrl).host;
+		} catch (e) {}
+		serverEl.textContent = host || "-";
+	}
+	if (!videoUrl && !wsUrl) {
+		setWsState("ERROR");
+		writeLog("No media URL tersedia");
+		return;
+	}
+
 	window.addEventListener("beforeunload", function() {
 		if (wsVideo) {
-			try {
-				wsVideo.close();
-			} catch (e) {}
+			try { wsVideo.close(); } catch (e) {}
 		}
 		if (wsObjectUrl) {
 			URL.revokeObjectURL(wsObjectUrl);
 		}
 	});
+
+	if (videoUrl && typeof fetch === "function") {
+		setWsState("FETCHING");
+		writeLog("Streaming langsung dari CDN...");
+		fetchController = typeof AbortController !== "undefined" ? new AbortController() : null;
+		fetch(videoUrl, {
+			mode: "cors",
+			signal: fetchController ? fetchController.signal : undefined
+		})
+			.then(function(res) {
+				if (!res.ok) throw new Error("HTTP " + res.status);
+				var ct = (res.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+				if (ct.indexOf("text/html") === 0 || ct.indexOf("application/json") === 0) {
+					throw new Error("Non-media content-type: " + ct);
+				}
+				if (ct && ct !== "application/octet-stream") {
+					wsMime = ct;
+					if (mimeEl) mimeEl.textContent = wsMime;
+				}
+				var cl = Number(res.headers.get("content-length") || 0);
+				if (cl > 0) wsTotal = cl;
+				setWsState("DOWNLOADING");
+				updateWsProgress();
+
+				if (res.body && typeof res.body.getReader === "function") {
+					var reader = res.body.getReader();
+					function pump() {
+						return reader.read().then(function(step) {
+							if (step.done) {
+								finishWsDownload(cfg);
+								return;
+							}
+							var val = step.value;
+							if (val && val.byteLength) {
+								wsChunks.push(val);
+								wsDownloaded += val.byteLength;
+								var now = Date.now();
+								if (now - wsLastLog > 400) {
+									wsLastLog = now;
+									writeLog("Chunk: " + fmtSize(val.byteLength));
+								}
+								updateWsProgress();
+							}
+							return pump();
+						});
+					}
+					return pump();
+				}
+				return res.arrayBuffer().then(function(buf) {
+					wsChunks.push(buf);
+					wsDownloaded += buf.byteLength;
+					updateWsProgress();
+					finishWsDownload(cfg);
+				});
+			})
+			.catch(function(err) {
+				if (userAbortedFetch || (err && err.name === "AbortError")) return;
+				writeLog("Direct fetch gagal: " + (err && err.message ? err.message : "CORS/net"));
+				if (wsUrl && !wsAttempted) {
+					startWsProxy(cfg);
+				} else {
+					useNativeMediaFallback(cfg, "Langsung muat URL ke player");
+				}
+			});
+		return;
+	}
+
+	if (wsUrl) {
+		startWsProxy(cfg);
+	} else {
+		useNativeMediaFallback(cfg, "Langsung muat URL ke player");
+	}
 }
 
 startVideoStream(config);
@@ -978,11 +1175,17 @@ export default {
     try {
       let info;
       if (/^https?:\/\//i.test(query)) {
-        info = { url: query, title: 'Aurora Stream', artist: `${config.botName} Stream`, thumbnail: '' };
+        info = { url: query, title: 'Aurora Stream', artist: `${config.botName} Stream`, thumbnail: '', duration: '' };
       } else {
         const results = await ytSearch(query);
         const v = results[0];
-        info = { url: v.url, title: v.title || 'Unknown', artist: v.artist || `${config.botName} Stream`, thumbnail: v.thumbnail || '' };
+        info = {
+          url: v.url,
+          title: v.title || 'Unknown',
+          artist: v.artist || `${config.botName} Stream`,
+          thumbnail: v.thumbnail || '',
+          duration: v.duration || ''
+        };
       }
       if (!info?.url) throw new Error('URL YouTube gak ketemu');
 
@@ -991,12 +1194,25 @@ export default {
 
       const finalTitle = data.title || info.title || 'Unknown Video';
       const finalChannel = info.artist || 'Unknown Channel';
-      const finalDuration = data.duration || '';
+      const finalDuration = data.duration || info.duration || '';
+      const mime = inferMimeFromFormat(format, data.url);
+      const isAudio = mime.startsWith('audio/');
       const thumbnailb64 = await thumbDataUri(data.thumbnail || info.thumbnail);
 
-      const wsUrl = WS_WORKER + '?url=' + encodeURIComponent(data.url);
+      const wsUrl = WS_WORKER
+        ? `${WS_WORKER}?url=${encodeURIComponent(data.url)}&mime=${encodeURIComponent(mime)}`
+        : '';
 
-      const htmlPayload = buildHtml({ finalTitle, finalChannel, finalDuration, videoUrl: data.url, thumbnailb64, wsUrl });
+      const htmlPayload = buildHtml({
+        finalTitle,
+        finalChannel,
+        finalDuration,
+        videoUrl: data.url,
+        thumbnailb64,
+        wsUrl,
+        mime,
+        isAudio
+      });
 
       const sent = await sendRichHtml(ctx, htmlPayload);
 

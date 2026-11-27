@@ -19,7 +19,7 @@ export default {
 
     let activeSession = null
     let activeType = null
-    for (const type of ['tebakkata']) {
+    for (const type of ['tebakkata', 'tebakgambar']) {
       const s = getSession(ctx.chat, type)
       if (s?.supportClue && Date.now() < s.expiresAt) {
         activeSession = s
@@ -42,22 +42,25 @@ export default {
 
     if (activeSession.clueCount === 1) {
       // Clue 1: kalimat hint tambahan
-      const word = activeSession.answer
-      const firstLetter = word[0].toUpperCase()
-      const length = word.length
+      const words = String(activeSession.answer).trim().split(/\s+/).filter(Boolean)
+      const firstLetters = words.map((w) => w[0].toUpperCase()).join(' ')
+      const letterLen = words.join('').length
+      const lengthText = words.length > 1 ? `*${words.length} kata* (*${letterLen}* huruf)` : `*${letterLen}* huruf`
       await ctx.reply(
 `╭─💡「 *CLUE #1* 」💡─╮
 │
-│ 📌 Kata ini:
-│   • Berawalan huruf *${firstLetter}*
-│   • Panjang *${length}* huruf
+│ 📌 Jawaban:
+│   • Berawalan huruf *${firstLetters}*
+│   • Panjang ${lengthText}
 │
 ╰────────────────────✦╯`
       )
     } else {
-      // Clue 2: underscore pattern (huruf pertama kebuka)
-      const word = activeSession.answer
-      const pattern = word[0].toUpperCase() + ' ' + word.slice(1).split('').map(() => '_').join(' ')
+      // Clue 2: underscore pattern per kata (huruf pertama tiap kata kebuka)
+      const words = String(activeSession.answer).trim().split(/\s+/).filter(Boolean)
+      const pattern = words
+        .map((w) => w[0].toUpperCase() + (w.length > 1 ? ' ' + w.slice(1).split('').map(() => '_').join(' ') : ''))
+        .join('   ')
       await ctx.reply(
 `╭─💡「 *CLUE #2* 」💡─╮
 │

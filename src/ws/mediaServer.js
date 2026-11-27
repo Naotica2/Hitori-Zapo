@@ -67,7 +67,8 @@ export function createMediaWsServer({ port = 8090, path = '/wss/audio' } = {}) {
       try {
         const res = await fetch(sourceUrl, {
           headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
-          redirect: 'follow'
+          redirect: 'follow',
+          signal: AbortSignal.timeout(90_000)
         });
         if (!res.ok || !res.body) {
           ws.send(JSON.stringify({ type: 'error', message: 'source fetch failed: ' + res.status }));
@@ -75,8 +76,21 @@ export function createMediaWsServer({ port = 8090, path = '/wss/audio' } = {}) {
           return;
         }
 
+        const headerMime = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+        if (/^(text\/html|application\/json)/.test(headerMime)) {
+          ws.send(JSON.stringify({ type: 'error', message: 'unexpected upstream type: ' + headerMime }));
+          try { ws.close(); } catch {}
+          return;
+        }
+
+        const resolvedMime =
+          u.searchParams.get('mime') ||
+          mimeFromUrl(sourceUrl) ||
+          (headerMime && headerMime !== 'application/octet-stream' ? headerMime : null) ||
+          mime;
+
         const total = Number(res.headers.get('content-length') || 0);
-        ws.send(JSON.stringify({ type: 'start', mime, contentLength: total }));
+        ws.send(JSON.stringify({ type: 'start', mime: resolvedMime, contentLength: total }));
 
         stream = Readable.fromWeb(res.body);
         for await (const piece of stream) {
