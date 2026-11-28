@@ -421,13 +421,21 @@ export default {
         )
       }
     } else {
-      if (!resolvedScheme && firstWord && COLOR_SCHEME_PRESETS[firstWord]) {
-        const preset = COLOR_SCHEME_PRESETS[firstWord]
-        resolvedScheme = preset.id
-        if (autoDoodle === undefined && typeof preset.doodle === 'boolean') {
-          autoDoodle = preset.doodle
+      for (const rawTok of remaining.split(/\s+/).filter(Boolean)) {
+        const tok = rawTok.toLowerCase()
+        if (tok === 'wp' || tok === 'wallpaper') opts.upload = 'wallpaper'
+        else if (tok === 'wpkey') opts.upload = 'wpkey'
+        else if (tok === 'full' || tok === 'blur') opts.fit = 'blur'
+        else if (tok === 'cover') opts.fit = 'cover'
+        else if (!resolvedScheme && COLOR_SCHEME_PRESETS[tok]) {
+          const preset = COLOR_SCHEME_PRESETS[tok]
+          resolvedScheme = preset.id
+          if (autoDoodle === undefined && typeof preset.doodle === 'boolean') {
+            autoDoodle = preset.doodle
+          }
         }
-      } else if (resolvedScheme && COLOR_SCHEME_PRESETS[resolvedScheme.toLowerCase()]) {
+      }
+      if (resolvedScheme && COLOR_SCHEME_PRESETS[resolvedScheme.toLowerCase()]) {
         const preset = COLOR_SCHEME_PRESETS[resolvedScheme.toLowerCase()]
         resolvedScheme = preset.id
         if (autoDoodle === undefined && typeof preset.doodle === 'boolean') {
