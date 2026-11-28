@@ -6,13 +6,29 @@ import config from '../config.js'
 import { richButtons, richList } from '../lib/richMessage.js'
 import { getStaffEntry } from './staff.js'
 
+function unwrapEnvelope(message, depth = 0) {
+  if (!message || typeof message !== 'object' || depth > 4) return message
+  const inner =
+    message.ephemeralMessage?.message ??
+    message.groupMentionedMessage?.message ??
+    message.botInvokeMessage?.message ??
+    message.deviceSentMessage?.message ??
+    message.viewOnceMessage?.message ??
+    message.viewOnceMessageV2?.message ??
+    message.documentWithCaptionMessage?.message ??
+    message.botForwardedMessage?.message
+  return inner ? unwrapEnvelope(inner, depth + 1) : message
+}
+
 function extractText(message) {
-  if (!message) return undefined
+  const unwrapped = unwrapEnvelope(message)
+  if (!unwrapped) return undefined
   return (
-    message.conversation ??
-    message.extendedTextMessage?.text ??
-    message.imageMessage?.caption ??
-    message.videoMessage?.caption ??
+    unwrapped.conversation ??
+    unwrapped.extendedTextMessage?.text ??
+    unwrapped.imageMessage?.caption ??
+    unwrapped.videoMessage?.caption ??
+    unwrapped.documentMessage?.caption ??
     undefined
   )
 }
@@ -41,7 +57,11 @@ export function buildContext(client, event) {
     isGroup: Boolean(event.key.isGroup),
     receivedAt: Date.now(),
 
-    mentioned: event.message?.extendedTextMessage?.contextInfo?.mentionedJid ?? [],
+    mentioned:
+      unwrapEnvelope(event.message)?.extendedTextMessage?.contextInfo?.mentionedJid ??
+      unwrapEnvelope(event.message)?.imageMessage?.contextInfo?.mentionedJid ??
+      unwrapEnvelope(event.message)?.videoMessage?.contextInfo?.mentionedJid ??
+      [],
 
     role,
     staffLabel: staff?.label ?? null,
