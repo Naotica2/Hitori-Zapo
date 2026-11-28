@@ -31,7 +31,11 @@ export default {
 
       if (!result.status || !result.data?.url) {
         await ctx.react('❎')
-        return ctx.reply('❌ Gagal memproses gambar: ' + (result.error || 'Terjadi kesalahan server.'))
+        const errText =
+          typeof result.error === 'string'
+            ? result.error
+            : result.error?.message || (result.error ? JSON.stringify(result.error) : 'Terjadi kesalahan server.')
+        return ctx.reply('❌ Gagal memproses gambar: ' + errText)
       }
 
       const resultBuffer = await downloadUrlBuffer(result.data.url, { timeout: 60_000 })

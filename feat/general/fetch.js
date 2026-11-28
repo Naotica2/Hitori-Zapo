@@ -5,15 +5,17 @@
 import { format } from 'util';
 import path from 'path';
 import { onRichReply } from '../../handlers/messageHandler.js';
+import { assertSafePublicUrl } from '../../lib/security.js';
 
 const RETRY_SESSIONS = (globalThis.HITORI_FETCH_SESSIONS ??= new Map());
+const MAX_RETRY_SESSIONS = 200;
 
-const MAX_REDIRECTS = 20;
+const MAX_REDIRECTS = 10;
 const MAX_BYTES = 100 * 1024 * 1024;
 
 function normalizeUrl(input) {
   let text = input.trim();
-  if (!/^https?:\/\//i.test(text)) text = 'http://' + text;
+  if (!/^https?:\/\//i.test(text)) text = 'https://' + text;
   return text;
 }
 
@@ -26,12 +28,17 @@ async function doFetch(ctx, startUrl) {
       throw new Error(`Too many redirects (max: ${MAX_REDIRECTS})`);
     }
 
-    const res = await fetch(redirectUrl);
+    const safe = await assertSafePublicUrl(redirectUrl);
+    const res = await fetch(safe.toString(), {
+      redirect: 'manual',
+      signal: AbortSignal.timeout(30_000)
+    });
 
-    if ([301, 302, 307, 308].includes(res.status)) {
+    if ([301, 302, 303, 307, 308].includes(res.status)) {
       const location = res.headers.get('location');
+      await res.body?.cancel?.().catch(() => {});
       if (!location) break;
-      redirectUrl = new URL(location, redirectUrl).toString();
+      redirectUrl = new URL(location, safe).toString();
       redirectCount += 1;
       continue;
     }
@@ -96,6 +103,10 @@ async function runFetch(ctx, url) {
 
   const token = Math.random().toString(36).slice(2, 10);
   const buttonId = `fetch:retry:${token}`;
+  if (RETRY_SESSIONS.size >= MAX_RETRY_SESSIONS) {
+    const oldest = RETRY_SESSIONS.keys().next().value;
+    if (oldest) RETRY_SESSIONS.delete(oldest);
+  }
   RETRY_SESSIONS.set(buttonId, url);
 
   onRichReply(buttonId, async (c2) => {

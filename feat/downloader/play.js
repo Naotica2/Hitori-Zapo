@@ -5,6 +5,7 @@
 import config from '../../config.js'
 import { downloadUrlBuffer } from '../../lib/media.js'
 import { ytdl } from '../../scraper/YT-DL.js'
+import { searchYouTube, searchYouTubeMusic } from '../../scraper/YT-Search.js'
 import { onRichReply } from '../../handlers/messageHandler.js'
 
 const SESSIONS = (globalThis.HITORI_PLAY_SESSIONS ??= new Map())
@@ -18,21 +19,30 @@ const cut = (s, n) => {
 const LINE = '━━━━━━━━━━━━━━━━━━━━';
 
 async function ytSearch(query) {
-  const res = await fetch('https://api.jhx.my.id/yt-search', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'User-Agent': 'Mozilla/5.0 (Linux; Android 13; 23021RAA2Y Build/TKQ1.221114.001) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.7922.199 Mobile Safari/537.36',
-      'Referer': 'https://jhx.my.id/ytdl/'
-    },
-    body: JSON.stringify({ q: query })
-  });
-  if (!res.ok) throw new Error('API search error: ' + res.status);
-  const json = await res.json();
-  if (!json.Status || !Array.isArray(json.data) || !json.data.length) {
-    throw new Error('Lagu tidak ditemukan');
-  }
-  return json.data;
+  try {
+    const res = await fetch('https://api.jhx.my.id/yt-search', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 13; 23021RAA2Y Build/TKQ1.221114.001) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.7922.199 Mobile Safari/537.36',
+        'Referer': 'https://jhx.my.id/ytdl/'
+      },
+      body: JSON.stringify({ q: query }),
+      signal: AbortSignal.timeout(15_000)
+    });
+    if (res.ok) {
+      const json = await res.json();
+      if (json?.Status && Array.isArray(json.data) && json.data.length) {
+        return json.data;
+      }
+    }
+  } catch {}
+
+  const ytm = await searchYouTubeMusic(query, 8).catch(() => [])
+  if (ytm.length) return ytm
+  const yt = await searchYouTube(query, 8).catch(() => [])
+  if (yt.length) return yt.map((v) => ({ ...v, artist: v.channel || '-' }))
+  throw new Error('Lagu tidak ditemukan');
 }
 
 async function downloadAndSend(ctx, idx) {
@@ -43,21 +53,48 @@ async function downloadAndSend(ctx, idx) {
 
   await ctx.react('⏳')
   try {
-    const data = await ytdl.download(v.url, 'mp3')
-    if (!data || data.error) throw new Error(data?.error || 'Gagal unduh audio.')
+    let buf = null
+    let dlTitle = v.title
 
-    const buf = await downloadUrlBuffer(data.download_url, { timeout: 120_000 })
+    try {
+      const data = await Promise.race([
+        ytdl.download(v.url, 'mp3'),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('savenow timeout')), 25_000))
+      ])
+      if (data?.status === 'success' && data.download_url) {
+        dlTitle = data.title || v.title
+        buf = await downloadUrlBuffer(data.download_url, { timeout: 180_000, maxBytes: 120 * 1024 * 1024 })
+      }
+    } catch {}
+
+    if (!buf) {
+      const jhxRes = await fetch('https://api.jhx.my.id/yt-download', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Referer: 'https://jhx.my.id/ytdl/',
+          'User-Agent': 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36'
+        },
+        body: JSON.stringify({ url: v.url, format: 'mp3' }),
+        signal: AbortSignal.timeout(30_000)
+      }).then((r) => r.json()).catch(() => null)
+      if (!jhxRes?.Status || !jhxRes?.data?.url) {
+        throw new Error(jhxRes?.message || 'Gagal unduh audio dari semua provider.')
+      }
+      dlTitle = jhxRes.data.title || v.title
+      buf = await downloadUrlBuffer(jhxRes.data.url, { timeout: 180_000, maxBytes: 120 * 1024 * 1024 })
+    }
 
     await ctx.client.message.send(ctx.chat, {
       type: 'audio',
       media: buf,
       mimetype: 'audio/mpeg',
-      fileName: (data.title || v.title) + '.mp3'
+      fileName: dlTitle + '.mp3'
     });
     await ctx.react('🎧');
   } catch (e) {
     await ctx.react('❎');
-    ctx.reply('*Maaf Error:* ' + (e.message || e));
+    await ctx.reply('*Maaf Error:* ' + (e.message || e));
   }
 }
 

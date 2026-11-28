@@ -3,23 +3,44 @@
  * FACESWAP.js — Face Swap engine.
  */
 
-async function getProxy() {
+async function getProxyList() {
   const axios = (await import('axios')).default
 
-  const { data: proxies } = await axios.get('https://proxy.jhx.my.id/jh-proxy')
-  const picked = proxies[Math.floor(Math.random() * proxies.length)]
+  try {
+    const { data: rawData } = await axios.get('https://proxy.jhx.my.id/jh-proxy', { timeout: 8000 })
+    let list = []
+    if (Array.isArray(rawData)) {
+      list = rawData
+    } else if (typeof rawData === 'string') {
+      list = rawData.split(/\r?\n/).map(s => s.trim()).filter(Boolean)
+    } else if (Array.isArray(rawData?.proxies)) {
+      list = rawData.proxies
+    }
 
-  const [host, port, username, password] = picked.split(':')
-
-  return {
-    protocol: 'http',
-    host,
-    port: parseInt(port),
-    auth: { username, password }
+    return list
+      .map((picked) => {
+        const clean = String(picked || '').replace(/^https?:\/\//i, '').trim()
+        const parts = clean.split(':')
+        if (parts.length >= 4) {
+          return {
+            protocol: 'http',
+            host: parts[0],
+            port: Number.parseInt(parts[1], 10),
+            auth: { username: parts[2], password: parts[3] }
+          }
+        }
+        if (parts.length === 2) {
+          return { protocol: 'http', host: parts[0], port: Number.parseInt(parts[1], 10) }
+        }
+        return null
+      })
+      .filter(Boolean)
+  } catch {
+    return []
   }
 }
 
-async function toBuffer(input, proxy) {
+async function toBuffer(input, proxy = false) {
   const axios = (await import('axios')).default
 
   if (Buffer.isBuffer(input)) return input
@@ -28,7 +49,8 @@ async function toBuffer(input, proxy) {
   if (typeof input === 'string' && /^https?:\/\//i.test(input)) {
     const res = await axios.get(input, {
       responseType: 'arraybuffer',
-      proxy
+      timeout: 25_000,
+      proxy: proxy || false
     })
     return Buffer.from(res.data)
   }
@@ -42,79 +64,92 @@ export async function faceSwap({ target, swap } = {}) {
   const FormData = (await import('form-data')).default
 
   try {
-    const proxy = await getProxy()
+    const proxies = await getProxyList()
+    const candidates = []
+    if (proxies.length) {
+      const shuffled = [...proxies].sort(() => Math.random() - 0.5).slice(0, 3)
+      candidates.push(...shuffled)
+    } else {
+      candidates.push(false)
+    }
 
     const [targetBuf, swapBuf] = await Promise.all([
-      toBuffer(target, proxy),
-      toBuffer(swap, proxy)
+      toBuffer(target, candidates[0]),
+      toBuffer(swap, candidates[0])
     ])
 
-    const rand1 = Math.floor(1000 + Math.random() * 9000)
-    const rand2 = Math.floor(1000 + Math.random() * 9000)
+    let lastErr = null
+    for (const proxy of candidates) {
+      try {
+        const rand1 = Math.floor(1000 + Math.random() * 9000)
+        const rand2 = Math.floor(1000 + Math.random() * 9000)
 
-    const form = new FormData()
+        const form = new FormData()
+        form.append('target_image', Buffer.from(targetBuf), {
+          filename: `Hitori_target_${rand1}.jpg`,
+          contentType: 'image/jpeg'
+        })
+        form.append('swap_image', Buffer.from(swapBuf), {
+          filename: `Hitori_swap_${rand2}.png`,
+          contentType: 'image/png'
+        })
+        form.append('version', '2')
 
-    form.append('target_image', Buffer.from(targetBuf), {
-      filename: `Hitori_target_${rand1}.jpg`,
-      contentType: 'image/jpeg'
-    })
+        const reqHeaders = {
+          ...form.getHeaders(),
+          'Product-Code': '067003',
+          'Product-Serial': crypto.randomBytes(16).toString('hex'),
+          source: 'ai_face_vary',
+          Authorization: ''
+        }
 
-    form.append('swap_image', Buffer.from(swapBuf), {
-      filename: `Hitori_swap_${rand2}.png`,
-      contentType: 'image/png'
-    })
+        const { data: createRes } = await axios.post(
+          'https://api.remaker.ai/api/pai/v3/ai-facevary/appapi/create-job',
+          form,
+          { headers: reqHeaders, proxy: proxy || false, timeout: 30_000 }
+        )
 
-    form.append('version', '2')
+        if (createRes.code !== 100000 || !createRes.result?.job_id) {
+          throw new Error(`Gagal create job: ${JSON.stringify(createRes)}`)
+        }
 
-    const reqHeaders = {
-      ...form.getHeaders(),
-      'Product-Code': '067003',
-      'Product-Serial': crypto.randomBytes(16).toString('hex'),
-      'source': 'ai_face_vary',
-      'Authorization': ''
-    }
+        const jobId = createRes.result.job_id
+        let finalResult = null
 
-    const { data: createRes } = await axios.post(
-      'https://api.remaker.ai/api/pai/v3/ai-facevary/appapi/create-job',
-      form,
-      { headers: reqHeaders, proxy }
-    )
+        for (let i = 0; i < 30; i++) {
+          await new Promise(r => setTimeout(r, 4000))
 
-    if (createRes.code !== 100000 || !createRes.result?.job_id) {
-      throw new Error(`Gagal create job: ${JSON.stringify(createRes)}`)
-    }
+          const { data: pollRes } = await axios.get(
+            `https://api.remaker.ai/api/pai/v3/ai-facevary/appapi/get-job/${jobId}`,
+            { headers: reqHeaders, proxy: proxy || false, timeout: 20_000 }
+          )
 
-    const jobId = createRes.result.job_id
-    let finalResult = null
+          if (pollRes.code === 300006) continue
 
-    for (let i = 0; i < 30; i++) {
-      await new Promise(r => setTimeout(r, 4000))
+          if (pollRes.code === 100000 && pollRes.result?.output_image_url) {
+            finalResult = Array.isArray(pollRes.result.output_image_url)
+              ? pollRes.result.output_image_url[0]
+              : pollRes.result.output_image_url
+            break
+          }
 
-      const { data: pollRes } = await axios.get(
-        `https://api.remaker.ai/api/pai/v3/ai-facevary/appapi/get-job/${jobId}`,
-        { headers: reqHeaders, proxy }
-      )
+          throw new Error(`Error polling: ${JSON.stringify(pollRes)}`)
+        }
 
-      if (pollRes.code === 300006) continue
+        if (!finalResult) throw new Error('Timeout nunggu render kelar!')
 
-      if (pollRes.code === 100000 && pollRes.result?.output_image_url) {
-        finalResult = Array.isArray(pollRes.result.output_image_url)
-          ? pollRes.result.output_image_url[0]
-          : pollRes.result.output_image_url
-        break
+        return {
+          success: true,
+          resultUrl: finalResult
+        }
+      } catch (attemptErr) {
+        lastErr = attemptErr
       }
-
-      throw new Error(`Error polling: ${JSON.stringify(pollRes)}`)
     }
 
-    if (!finalResult) throw new Error('Timeout nunggu render kelar!')
-
-    return {
-      success: true,
-      resultUrl: finalResult
-    }
+    throw lastErr || new Error('Semua node Face Swap gagal merespons.')
   } catch (err) {
-    const errInfo = err.response?.data || err.stack || err.message
+    const errInfo = err.response?.data || err.message || err
     throw new Error(typeof errInfo === 'object' ? JSON.stringify(errInfo) : String(errInfo))
   }
 }

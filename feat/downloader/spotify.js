@@ -3,7 +3,7 @@
  * spotify.js — Search dan Download lagu dari Spotify
  */
 import config from '../../config.js'
-import { downloadUrlBuffer } from '../../lib/media.js'
+import { downloadUrlBuffer, getEvent } from '../../lib/media.js'
 import { onRichReply } from '../../handlers/messageHandler.js'
 import { spotifySearch, spotifyDownload, spotiDownFallback } from '../../scraper/SPOTIFY.js'
 
@@ -17,7 +17,8 @@ const cut = (s, n) => {
 };
 
 async function processDownload(ctx, url, metaData = null) {
-  const rawMessage = ctx.message || ctx.raw;
+  const rawEvent = getEvent(ctx);
+  const sendOpts = rawEvent ? { quote: rawEvent } : {};
 
   await ctx.react('⏳');
   
@@ -62,7 +63,7 @@ async function processDownload(ctx, url, metaData = null) {
           mimetype: 'image/jpeg',
           caption: caption
         },
-        { quote: rawMessage }
+        sendOpts
       );
     } else {
       await ctx.reply(caption);
@@ -79,7 +80,7 @@ async function processDownload(ctx, url, metaData = null) {
         ptt: false,
         fileName: `${title}.mp3`
       },
-      { quote: rawMessage }
+      sendOpts
     );
     
     await ctx.react('✅');

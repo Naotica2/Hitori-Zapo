@@ -166,8 +166,8 @@ export async function stalkHsr(uidInput) {
   let mihomo = null
   try {
     mihomo = await fetchJson(`https://api.mihomo.me/sr_info_parsed/${uid}?lang=id`)
-  } catch (e) {
-    if (e.status === 404) throw e
+  } catch {
+    mihomo = null
   }
 
   if (mihomo?.player) {

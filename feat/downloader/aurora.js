@@ -6,6 +6,7 @@
 import config from '../../config.js';
 import { sendRichHtml } from '../../lib/richHtml.js';
 import { ytdl } from '../../scraper/YT-DL.js';
+import { searchYouTube, searchYouTubeMusic } from '../../scraper/YT-Search.js';
 
 const API_BASE = 'https://api.jhx.my.id';
 const API_HEADERS = {
@@ -17,18 +18,25 @@ const API_HEADERS = {
 const WS_WORKER = config.wsWorkerUrl || 'wss://audio.jhx.my.id/wss/audio';
 
 async function ytSearch(query) {
-  const res = await fetch(API_BASE + '/yt-search', {
-    method: 'POST', headers: API_HEADERS,
-    body: JSON.stringify({ q: query }),
-    signal: AbortSignal.timeout(30000)
-  });
-  const text = await res.text();
-  let json = null;
-  try { json = JSON.parse(text); } catch {}
-  if (!res.ok || !json || !json.Status || !Array.isArray(json.data) || !json.data.length) {
-    throw new Error(`Search gagal: HTTP ${res.status} ${text.slice(0, 120)}`);
-  }
-  return json.data;
+  try {
+    const res = await fetch(API_BASE + '/yt-search', {
+      method: 'POST', headers: API_HEADERS,
+      body: JSON.stringify({ q: query }),
+      signal: AbortSignal.timeout(15000)
+    });
+    const text = await res.text();
+    let json = null;
+    try { json = JSON.parse(text); } catch {}
+    if (res.ok && json?.Status && Array.isArray(json.data) && json.data.length) {
+      return json.data;
+    }
+  } catch {}
+
+  const ytm = await searchYouTubeMusic(query, 8).catch(() => []);
+  if (ytm.length) return ytm;
+  const yt = await searchYouTube(query, 8).catch(() => []);
+  if (yt.length) return yt.map((v) => ({ ...v, artist: v.channel || '-' }));
+  throw new Error('Pencarian YouTube tidak menemukan hasil.');
 }
 
 async function ytDownload(url, format) {

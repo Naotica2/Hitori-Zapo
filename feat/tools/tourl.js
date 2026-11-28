@@ -8,6 +8,7 @@ import uploadImage from '../../lib/uploadImage.js'
 
 const IMAGE_HOST_MIME =
   /image\/(png|jpe?g|gif)|video\/mp4|audio\/mpeg|audio\/mp3|audio\/opus/
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 
 export default {
   name: 'tourl',
@@ -19,7 +20,7 @@ export default {
     const { event, targetMessage, payload } = resolveTargetMedia(ctx)
     if (!event) {
       return ctx.reply(
-        'Gak nemu raw message event di ctx. Cek properti yang bener di framework (ctx.message / ctx.event / dst).'
+        'Gak nemu raw message event di ctx. Cek properti yang bener di framework.'
       )
     }
 
@@ -29,10 +30,19 @@ export default {
       )
     }
 
+    if (payload.fileLength && payload.fileLength > MAX_UPLOAD_BYTES) {
+      return ctx.reply(
+        `⚠️ Media kegedean (${(payload.fileLength / 1024 / 1024).toFixed(1)} MB, maks ${MAX_UPLOAD_BYTES / 1024 / 1024} MB).`
+      )
+    }
+
     await ctx.react('⏳')
 
     try {
       const media = await downloadTargetBuffer(targetMessage)
+      if (media.length > MAX_UPLOAD_BYTES) {
+        throw new Error(`Ukuran media melebihi batas ${MAX_UPLOAD_BYTES / 1024 / 1024} MB.`)
+      }
 
       const isTele = IMAGE_HOST_MIME.test(payload.mimetype)
       const link = await (isTele ? uploadImage : uploadFile)(media)
@@ -43,10 +53,10 @@ export default {
         `📛 *E x p i r e d :* ${isTele ? 'No Expiry Date' : 'Unknown'}`
 
       await ctx.react('✅')
-      ctx.reply(caption)
+      await ctx.reply(caption)
     } catch (e) {
       await ctx.react('❎')
-      ctx.reply('Terjadi kesalahan saat mengunggah media: ' + (e.message || e))
+      await ctx.reply('Terjadi kesalahan saat mengunggah media: ' + (e.message || e))
     }
   }
 }

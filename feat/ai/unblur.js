@@ -32,12 +32,14 @@ export default {
       const mediaBuffer = await downloadTargetBuffer(targetMessage)
       const res = await unblurImage(mediaBuffer)
 
-      if (!res.status) {
+      if (!res.status || (!res.data?.buffer && !res.data?.result_url)) {
         await ctx.react('❎')
-        return ctx.reply('❌ Gagal: ' + res.error)
+        return ctx.reply('❌ Gagal: ' + (res.error || 'Tidak ada output dari server AI.'))
       }
 
-      const imgBuffer = await downloadUrlBuffer(res.data.result_url, { timeout: 120_000 })
+      const imgBuffer = Buffer.isBuffer(res.data?.buffer)
+        ? res.data.buffer
+        : await downloadUrlBuffer(res.data.result_url, { timeout: 120_000 })
 
       await ctx.client.message.send(
         ctx.chat,

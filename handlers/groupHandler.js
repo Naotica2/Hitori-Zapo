@@ -56,7 +56,7 @@ async function resolveLids(client, participants, metaParticipants) {
     const pns = (metaParticipants ?? [])
       .map(toJid)
       .filter((j) => j && j.endsWith('@s.whatsapp.net'))
-    const rows = await client.profile.getLidsByPhoneNumbers(pns.map((j) => j.split('@')[0]))
+    const rows = await client.profile.getLidsByPhoneNumbers(pns.map((j) => j.split('@')[0].split(':')[0]))
     const map = new Map()
     for (const r of rows) {
       if (r?.lidJid) map.set(r.lidJid, r.phoneJid ?? r.queriedJid)

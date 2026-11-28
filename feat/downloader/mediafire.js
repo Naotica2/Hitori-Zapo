@@ -3,8 +3,12 @@
  * mediafire.js — MediaFire Downloader Feature
  */
 import config from '../../config.js'
-import { getEvent } from '../../lib/media.js'
+import { downloadUrlBuffer, extractUrlFromCtx, getEvent } from '../../lib/media.js'
+import { assertSafePublicUrl } from '../../lib/security.js'
 import { mediafireDownload } from '../../scraper/MEDIAFIRE.js'
+
+const MF_URL_RE = /https?:\/\/(?:www\.)?mediafire\.com\/(?:file|download)\/[^\s]+/i
+const MAX_MF_BYTES = 100 * 1024 * 1024
 
 export default {
   name: 'mediafire',
@@ -13,19 +17,18 @@ export default {
   description: 'Download file dari MediaFire',
 
   async run(ctx) {
-    const text = (ctx.text || '').trim()
-    const urlMatch = text.match(/https?:\/\/(www\.)?mediafire\.com\/(file|download)\/[^\s]+/i)
-
-    if (!urlMatch) {
+    const targetUrl = extractUrlFromCtx(ctx, MF_URL_RE, { stripTrailing: true })
+    if (!targetUrl) {
       return ctx.reply(
         '✦ *MEDIAFIRE DOWNLOADER* ✦\n\n' +
-        'Kirim link MediaFire yang mau di-download.\n' +
+        'Kirim link MediaFire atau reply pesan berisi link.\n' +
         '*Contoh:*\n' +
         '`.mf https://www.mediafire.com/file/xxxxx`'
       )
     }
 
-    const targetUrl = urlMatch[0]
+    const rawQuote = getEvent(ctx)
+    const sendOpts = rawQuote ? { quote: rawQuote } : {}
     await ctx.react('⏳')
 
     try {
@@ -37,37 +40,42 @@ export default {
       }
 
       const { file_name, file_size, download_url } = res.data
-      const rawQuote = getEvent(ctx)
+      await assertSafePublicUrl(download_url)
 
-      await ctx.reply(`✅ *File Ditemukan!*\n\n📄 *Nama:* ${file_name}\n⚖️ *Size:* ${file_size}\n\n_Sedang mengunduh dan mengirim file, tunggu sebentar..._`)
+      await ctx.reply(
+        `✅ *File Ditemukan!*\n\n📄 *Nama:* ${file_name}\n⚖️ *Size:* ${file_size}\n\n_Sedang mengunduh dan mengirim file, tunggu sebentar..._`
+      )
 
-      const axios = (await import('axios')).default
-      const { data: fileBuffer, headers } = await axios.get(download_url, {
-        responseType: 'arraybuffer',
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-          Referer: 'https://www.mediafire.com/'
-        }
+      const head = await fetch(download_url, {
+        method: 'HEAD',
+        headers: { Referer: 'https://www.mediafire.com/' },
+        signal: AbortSignal.timeout(12_000)
+      }).catch(() => null)
+      const mimeType =
+        (head?.headers?.get('content-type') || '').split(';')[0].trim() || 'application/octet-stream'
+
+      const fileBuffer = await downloadUrlBuffer(download_url, {
+        timeout: 120_000,
+        maxBytes: MAX_MF_BYTES,
+        headers: { Referer: 'https://www.mediafire.com/' }
       })
-
-      const mimeType = headers['content-type'] || 'application/octet-stream'
 
       await ctx.client.message.send(
         ctx.chat,
         {
           type: 'document',
-          media: Buffer.from(fileBuffer),
+          media: fileBuffer,
           fileName: file_name,
           mimetype: mimeType,
           caption: `📥 *MEDIAFIRE DOWNLOADER*\n\n📄 *Nama:* ${file_name}\n⚖️ *Ukuran:* ${file_size}\n> _🤖 *Powered by ${config.botName}*_`
         },
-        { quote: rawQuote }
+        sendOpts
       )
 
       await ctx.react('✅')
     } catch (error) {
       await ctx.react('❎')
-      return ctx.reply('❌ Error sistem: ' + String(error.message || error).slice(0, 150))
+      return ctx.reply('❌ Error sistem: ' + String(error.message || error).slice(0, 180))
     }
   }
 }

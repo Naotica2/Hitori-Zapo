@@ -14,9 +14,16 @@ import { reactTo } from '../core/react.js'
 import { describeProtocolMessage, inspectIncomingChatTheme } from '../lib/chatTheme.js'
 
 const richHandlers = new Map()
+const MAX_RICH_HANDLERS = 2000
 
 export function onRichReply(id, handler) {
+  if (richHandlers.has(id)) richHandlers.delete(id)
   richHandlers.set(id, handler)
+  while (richHandlers.size > MAX_RICH_HANDLERS) {
+    const oldest = richHandlers.keys().next().value
+    if (!oldest) break
+    richHandlers.delete(oldest)
+  }
 }
 
 // Karakter invisible yang diselipin WA di sekeliling mention

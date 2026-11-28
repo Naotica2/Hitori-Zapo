@@ -43,11 +43,12 @@ export async function pinDownload(inputUrl) {
 
       const apiRes = await axios.get(apiUrl, {
         headers: {
-          ...jantung,
+          ...reqHeaders,
           "x-pinterest-pws-handler": "www/pin/[id].js",
           "accept": "application/json, text/javascript, */*, q=0.01",
           "referer": cleanUrl
         },
+        timeout: 20_000,
         validateStatus: () => true
       });
 

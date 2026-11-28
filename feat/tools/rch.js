@@ -4,6 +4,7 @@
  */
 import config from '../../config.js'
 import { logger } from '../../core/logger.js'
+import { extractTextFromMessage, getQuotedMessage } from '../../lib/media.js'
 import { reactChannelApi } from '../../scraper/rch.js'
 
 export default {
@@ -13,19 +14,26 @@ export default {
   cooldown: 5000,
   description: 'React postingan WhatsApp Channel menggunakan emoji (bisa reply link atau ketik langsung)',
   async run(ctx) {
-    const args = ctx.args || (ctx.text ? ctx.text.split(' ').slice(1) : [])
+    const args = Array.isArray(ctx.args) && ctx.args.length
+      ? ctx.args
+      : String(ctx.text || '').trim().split(/\s+/).filter(Boolean)
 
-    let link = args[0]
-    let emoji = args[1] || '❤️'
+    let link = ''
+    let emoji = '❤️'
 
-    const quoted = ctx.quoted ? (ctx.quoted.text || ctx.quoted.caption || '') : ''
+    for (const tok of args) {
+      if (!link && /https?:\/\/whatsapp\.com\/channel\/[^\s]+/i.test(tok)) {
+        link = tok.trim()
+      } else if (emoji === '❤️') {
+        emoji = tok.trim() || '❤️'
+      }
+    }
+
+    const quoted = extractTextFromMessage(getQuotedMessage(ctx)).trim()
     if (!link && quoted) {
-      const match = quoted.match(/(https:\/\/whatsapp\.com\/channel\/[^\s]+)/)
+      const match = quoted.match(/https?:\/\/whatsapp\.com\/channel\/[^\s]+/i)
       if (match) {
-        link = match[1]
-        if (args[0] && !args[0].startsWith('http')) {
-          emoji = args[0]
-        }
+        link = match[0]
       }
     }
 

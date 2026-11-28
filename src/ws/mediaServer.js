@@ -18,6 +18,7 @@ import { WebSocketServer } from 'ws';
 import { Readable } from 'node:stream';
 import http from 'node:http';
 import { URL } from 'node:url';
+import { assertSafePublicUrl } from '../../lib/security.js';
 
 const EXT_MIME = {
   mp3: 'audio/mpeg',
@@ -44,7 +45,13 @@ export function createMediaWsServer({ port = 8090, path = '/wss/audio' } = {}) {
   const wss = new WebSocketServer({ server, path });
 
   wss.on('connection', (ws, req) => {
-    const u = new URL(req.url, 'http://localhost');
+    let u;
+    try {
+      u = new URL(req.url || '/', 'http://localhost');
+    } catch {
+      ws.close(4001, 'invalid request url');
+      return;
+    }
     const sourceUrl = u.searchParams.get('url');
 
     if (!sourceUrl) {
@@ -65,7 +72,8 @@ export function createMediaWsServer({ port = 8090, path = '/wss/audio' } = {}) {
     (async () => {
       let stream = null;
       try {
-        const res = await fetch(sourceUrl, {
+        const safeTarget = await assertSafePublicUrl(sourceUrl);
+        const res = await fetch(safeTarget.toString(), {
           headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
           redirect: 'follow',
           signal: AbortSignal.timeout(90_000)
