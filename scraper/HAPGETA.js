@@ -15,7 +15,11 @@ const SESSION_DIR = path.join(ROOT, 'session')
 const AUTH = 'https://agent.hapgetaai.com'
 const AI = 'https://aiagent.hapgetaai.com'
 const MAIL = 'https://api.mail.tm'
+const UGUU_UPLOAD_URL = 'https://uguu.se/upload'
+const X0_UPLOAD_URL = 'https://x0.at/'
 const LITTERBOX_UPLOAD_URL = 'https://litterbox.catbox.moe/resources/internals/api.php'
+const FREEIMAGE_UPLOAD_URL = 'https://freeimage.host/api/1/upload'
+const FREEIMAGE_PUBLIC_KEY = '6d207e02198a847aa98d0a2a901485a5'
 const DEFAULT_VIDEO_MODEL = 'seedance-1-5-pro-251215'
 const DEFAULT_TIMEOUT = 120_000
 const CHAT_TIMEOUT = 300_000
@@ -1034,24 +1038,147 @@ export async function runWithWorkerSession(fn, { allowInitialBootstrap = true } 
   fail('Tidak ada akun HAPGETA aktif yang siap dipakai.', { code: 'AUTH_REQUIRED' })
 }
 
+async function normalizeUploadImage(buffer, filename = 'image.jpg', mime = 'image/jpeg') {
+  try {
+    const { default: sharp } = await import('sharp')
+    const meta = await sharp(buffer).metadata()
+    const w = Number(meta.width || 0)
+    const h = Number(meta.height || 0)
+    const needsResize = w > 0 && h > 0 && (w < 320 || h < 320)
+    const isStandardFormat = meta.format === 'jpeg' || meta.format === 'png'
+
+    if (!needsResize && isStandardFormat) {
+      return {
+        buffer,
+        filename: filename.replace(/\.[^.]+$/, '') + (meta.format === 'png' ? '.png' : '.jpg'),
+        mime: meta.format === 'png' ? 'image/png' : 'image/jpeg'
+      }
+    }
+
+    let pipeline = sharp(buffer).rotate()
+    if (needsResize) {
+      const scale = Math.max(320 / w, 320 / h)
+      pipeline = pipeline.resize(Math.ceil(w * scale), Math.ceil(h * scale), { fit: 'fill' })
+    }
+    const outBuf = await pipeline.jpeg({ quality: 92 }).toBuffer()
+    return {
+      buffer: outBuf,
+      filename: filename.replace(/\.[^.]+$/, '') + '.jpg',
+      mime: 'image/jpeg'
+    }
+  } catch {
+    return { buffer, filename, mime }
+  }
+}
+
+async function verifyDirectImageUrl(url) {
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: { Range: 'bytes=0-15' },
+    signal: AbortSignal.timeout(10_000)
+  })
+  const ct = String(res.headers.get('content-type') || '').toLowerCase()
+  await res.body?.cancel?.().catch(() => {})
+  if (!res.ok || !ct.startsWith('image/')) {
+    throw new Error(`bukan direct image (${res.status} ${ct || 'unknown'})`)
+  }
+}
+
+const IMAGE_UPLOAD_PROVIDERS = [
+  {
+    name: 'uguu.se',
+    async upload(buf, filename, mime) {
+      const fd = new FormData()
+      fd.append('files[]', new Blob([buf], { type: mime }), filename)
+      const res = await fetch(UGUU_UPLOAD_URL, {
+        method: 'POST',
+        body: fd,
+        signal: AbortSignal.timeout(25_000)
+      })
+      const data = await parseBody(res)
+      const url = data?.files?.[0]?.url
+      if (!res.ok || !url?.startsWith('https://')) {
+        throw new Error(`HTTP ${res.status}: ${typeof data === 'string' ? data.slice(0, 80) : data?.description || 'upload error'}`)
+      }
+      return url
+    }
+  },
+  {
+    name: 'x0.at',
+    async upload(buf, filename, mime) {
+      const fd = new FormData()
+      fd.append('file', new Blob([buf], { type: mime }), filename)
+      const res = await fetch(X0_UPLOAD_URL, {
+        method: 'POST',
+        headers: { 'User-Agent': 'curl/8.5.0' },
+        body: fd,
+        signal: AbortSignal.timeout(25_000)
+      })
+      const url = (await res.text()).trim()
+      if (!res.ok || !url.startsWith('https://')) {
+        throw new Error(`HTTP ${res.status}: ${url.slice(0, 80)}`)
+      }
+      return url
+    }
+  },
+  {
+    name: 'litterbox',
+    async upload(buf, filename, mime) {
+      const fd = new FormData()
+      fd.append('reqtype', 'fileupload')
+      fd.append('time', '1h')
+      fd.append('fileToUpload', new Blob([buf], { type: mime }), filename)
+      const res = await fetch(LITTERBOX_UPLOAD_URL, {
+        method: 'POST',
+        body: fd,
+        signal: AbortSignal.timeout(25_000)
+      })
+      const url = (await res.text()).trim()
+      if (!res.ok || !url.startsWith('https://')) {
+        throw new Error(`HTTP ${res.status}: ${url.slice(0, 80)}`)
+      }
+      return url
+    }
+  },
+  {
+    name: 'freeimage.host',
+    async upload(buf) {
+      const fd = new FormData()
+      fd.append('key', FREEIMAGE_PUBLIC_KEY)
+      fd.append('source', buf.toString('base64'))
+      const res = await fetch(FREEIMAGE_UPLOAD_URL, {
+        method: 'POST',
+        body: fd,
+        signal: AbortSignal.timeout(25_000)
+      })
+      const data = await parseBody(res)
+      const url = data?.image?.url
+      if (!res.ok || !url?.startsWith('https://')) {
+        throw new Error(`HTTP ${res.status}: ${typeof data === 'string' ? data.slice(0, 80) : data?.error?.message || 'upload error'}`)
+      }
+      return url
+    }
+  }
+]
+
 export async function uploadPublicImage(buffer, filename = 'image.jpg', mime = 'image/jpeg') {
   if (!Buffer.isBuffer(buffer) || !buffer.length) {
     throw new Error('Buffer gambar kosong.')
   }
-  const fd = new FormData()
-  fd.append('reqtype', 'fileupload')
-  fd.append('time', '1h')
-  fd.append('fileToUpload', new Blob([buffer], { type: mime }), filename)
-  const res = await fetch(LITTERBOX_UPLOAD_URL, {
-    method: 'POST',
-    body: fd,
-    signal: AbortSignal.timeout(30_000)
-  })
-  const url = (await res.text()).trim()
-  if (!res.ok || !url.startsWith('https://')) {
-    throw new Error(`Gagal upload media ke host sementara (${res.status}): ${url.slice(0, 120)}`)
+  const normalized = await normalizeUploadImage(buffer, filename, mime)
+  const errors = []
+
+  for (const provider of IMAGE_UPLOAD_PROVIDERS) {
+    try {
+      const url = await provider.upload(normalized.buffer, normalized.filename, normalized.mime)
+      await verifyDirectImageUrl(url)
+      return url
+    } catch (err) {
+      errors.push(`${provider.name}: ${err?.message || err}`)
+    }
   }
-  return url
+
+  throw new Error(`Gagal upload media ke semua host sementara (${errors.join(' | ').slice(0, 220)})`)
 }
 
 export default {
