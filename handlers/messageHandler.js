@@ -11,6 +11,7 @@ import { checkCooldown, checkFlood } from '../core/cooldown.js'
 import { touchUser, incrementCommand, getUser, topUsers } from '../core/database.js'
 import { sendTyping, markRead } from '../core/presence.js'
 import { reactTo } from '../core/react.js'
+import { describeProtocolMessage, inspectIncomingChatTheme } from '../lib/chatTheme.js'
 
 const richHandlers = new Map()
 
@@ -127,6 +128,10 @@ async function describeMessage(client, chat, message) {
   if (message.documentMessage) return `dokumen 📄 ${message.documentMessage.fileName ?? ''}`
   if (message.contactMessage) return 'kontak 👤'
   if (message.locationMessage) return 'lokasi 📍'
+  if (message.protocolMessage) {
+    const protoDesc = describeProtocolMessage(message.protocolMessage)
+    if (protoDesc) return protoDesc
+  }
   const keys = Object.keys(message)
   return keys.length ? `(bentuk belum dikenal: ${keys.join(', ')})` : '(pesan kosong)'
 }
@@ -169,6 +174,10 @@ export async function route(client, event) {
   // ✅ Beautify mention di log
   const desc = await describeMessage(client, ctx.chat, event.message)
   logger.info(`💬 ${who} [${where}] ${desc}`)
+
+  if (event.message?.protocolMessage?.chatThemeSetting) {
+    void inspectIncomingChatTheme(client, event, logger)
+  }
 
   if (!ctx.body) return
 
