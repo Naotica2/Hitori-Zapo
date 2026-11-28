@@ -16,20 +16,78 @@ const RANK_GROUPS = [
   { name: 'Mythic', start: 136, end: 160, divisions: 0 },
   { name: 'Mythical Honor', start: 161, end: 185, divisions: 0 },
   { name: 'Mythical Glory', start: 186, end: 235, divisions: 0 },
-  { name: 'Glorious Mythic', start: 236, end: 9999, divisions: 0 }
+  { name: 'Mythical Immortal', start: 236, end: 9999, divisions: 0 }
 ]
 const DIVISIONS = { 3: ['III', 'II', 'I'], 4: ['IV', 'III', 'II', 'I'], 5: ['V', 'IV', 'III', 'II', 'I'] }
+
+const PVP_MODES = {
+  1: 'Classic',
+  2: 'Ranked',
+  4: 'Brawl'
+}
+
+const HERO_NAMES = {
+  1: 'Miya', 2: 'Balmond', 3: 'Saber', 4: 'Alice', 5: 'Nana', 6: 'Tigreal', 7: 'Alucard', 8: 'Karina',
+  9: 'Akai', 10: 'Franco', 11: 'Bane', 12: 'Bruno', 13: 'Clint', 14: 'Rafaela', 15: 'Eudora', 16: 'Zilong',
+  17: 'Fanny', 18: 'Layla', 19: 'Minotaur', 20: 'Lolita', 21: 'Hayabusa', 22: 'Freya', 23: 'Gord', 24: 'Natalia',
+  25: 'Kagura', 26: 'Chou', 27: 'Sun', 28: 'Alpha', 29: 'Ruby', 30: 'Yi Sun-shin', 31: 'Moskov', 32: 'Johnson',
+  33: 'Cyclops', 34: 'Estes', 35: 'Hilda', 36: 'Aurora', 37: 'Lapu-Lapu', 38: 'Vexana', 39: 'Roger', 40: 'Karrie',
+  41: 'Gatotkaca', 42: 'Harley', 43: 'Irithel', 44: 'Grock', 45: 'Argus', 46: 'Odette', 47: 'Lancelot', 48: 'Diggie',
+  49: 'Hylos', 50: 'Zhask', 51: 'Helcurt', 52: 'Pharsa', 53: 'Lesley', 54: 'Jawhead', 55: 'Angela', 56: 'Gusion',
+  57: 'Valir', 58: 'Martis', 59: 'Uranus', 60: 'Hanabi', 61: "Chang'e", 62: 'Kaja', 63: 'Selena', 64: 'Aldous',
+  65: 'Claude', 66: 'Vale', 67: 'Leomord', 68: 'Lunox', 69: 'Hanzo', 70: 'Belerick', 71: 'Kimmy', 72: 'Thamuz',
+  73: 'Harith', 74: 'Minsitthar', 75: 'Kadita', 76: 'Faramis', 77: 'Badang', 78: 'Khufra', 79: 'Granger', 80: 'Guinevere',
+  81: 'Esmeralda', 82: 'Terizla', 83: 'X.Borg', 84: 'Ling', 85: 'Dyrroth', 86: 'Lylia', 87: 'Baxia', 88: 'Masha',
+  89: 'Wanwan', 90: 'Silvanna', 91: 'Cecilion', 92: 'Carmilla', 93: 'Atlas', 94: 'Popol and Kupa', 95: 'Yu Zhong', 96: 'Luo Yi',
+  97: 'Benedetta', 98: 'Khaleed', 99: 'Barats', 100: 'Brody', 101: 'Yve', 102: 'Mathilda', 103: 'Paquito', 104: 'Gloo',
+  105: 'Beatrix', 106: 'Phoveus', 107: 'Natan', 108: 'Aulus', 109: 'Aamon', 110: 'Valentina', 111: 'Edith', 112: 'Floryn',
+  113: 'Yin', 114: 'Melissa', 115: 'Xavier', 116: 'Julian', 117: 'Fredrinn', 118: 'Joy', 119: 'Novaria', 120: 'Arlott',
+  121: 'Ixia', 122: 'Nolan', 123: 'Cici', 124: 'Chip', 125: 'Zhuxin', 126: 'Suyou', 127: 'Lukas', 128: 'Kalea',
+  129: 'Zetian', 130: 'Obsidia', 131: 'Sora', 132: 'Marcel', 133: 'Hirara'
+}
+
+const heroName = (heroId) => {
+  const id = Number(heroId)
+  if (!Number.isFinite(id) || id <= 0) return 'Unknown'
+  return HERO_NAMES[id] || `Hero #${id}`
+}
+
+let lastHeroSyncAt = 0
+const ensureHeroNames = async (ids) => {
+  const missing = (ids || []).some((id) => Number(id) > 0 && !HERO_NAMES[Number(id)])
+  if (!missing || Date.now() - lastHeroSyncAt < 12 * 60 * 60 * 1000) return
+  lastHeroSyncAt = Date.now()
+  try {
+    const res = await fetch('https://api.gms.moontontech.com/api/gms/source/2669606/2756564', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pageSize: 300, pageIndex: 1 }),
+      signal: AbortSignal.timeout(5000)
+    })
+    const d = await res.json().catch(() => null)
+    for (const rec of d?.data?.records || []) {
+      const h = rec?.data?.hero?.data || {}
+      const id = Number(rec?.data?.hero_id ?? h.heroid)
+      if (id > 0 && h.name) HERO_NAMES[id] = String(h.name).trim()
+    }
+  } catch {}
+}
 
 const rankOf = (value) => {
   const level = Number(value)
   if (!Number.isFinite(level) || level <= 0) return null
   const group = RANK_GROUPS.find((item) => level >= item.start && level <= item.end)
-  if (!group) return { level, name: 'Unranked', division: null, fullName: 'Unranked' }
-  if (!group.divisions) return { level, name: group.name, division: null, fullName: group.name }
+  if (!group) return { level, name: 'Unranked', division: null, stars: null, fullName: 'Unranked', displayName: 'Unranked' }
+  if (!group.divisions) {
+    const stars = level >= 136 ? level - 136 : null
+    const displayName = stars !== null ? `${group.name} (★${stars})` : group.name
+    return { level, name: group.name, division: null, stars, fullName: group.name, displayName }
+  }
   const span = (group.end - group.start + 1) / group.divisions
   const index = Math.min(group.divisions - 1, Math.floor((level - group.start) / span))
   const division = DIVISIONS[group.divisions][index]
-  return { level, name: group.name, division, fullName: `${group.name} ${division}` }
+  const fullName = `${group.name} ${division}`
+  return { level, name: group.name, division, stars: null, fullName, displayName: fullName }
 }
 
 class MlbbError extends Error {
@@ -558,7 +616,7 @@ const isoFromSeconds = (seconds) => {
   return Number.isFinite(value) && value > 0 ? new Date(value * 1000).toISOString() : null
 }
 
-const COLLECTION_QUALITY = { 1: 'common', 2: 'exceptional', 3: 'deluxe', 4: 'exquisite', 5: 'grand', 6: 'legend' }
+const COLLECTION_QUALITY = { 1: 'common', 2: 'exceptional', 3: 'deluxe', 4: 'exquisite', 5: 'grand', 6: 'supreme' }
 
 const decodeCollection = (node) => {
   if (!node || node.type !== SDP_STRUCT) return null
@@ -656,8 +714,10 @@ const decodePlayerBase = (fields) => {
 const decodeHeroDatas = (nodes) =>
   (nodes || []).map((item) => {
     const fields = fieldsOf(item)
+    const heroId = sdpInt(fields, 0)
     return {
-      heroId: sdpInt(fields, 0),
+      heroId,
+      heroName: heroName(heroId),
       matches: sdpInt(fields, 1),
       wins: sdpInt(fields, 2),
       skinId: sdpInt(fields, 3),
@@ -665,30 +725,36 @@ const decodeHeroDatas = (nodes) =>
     }
   })
 
-const decodeRecordDetail = (fields) => ({
-  camp: sdpInt(fields, 1),
-  position: sdpInt(fields, 2),
-  heroId: sdpInt(fields, 3),
-  equipment: ((sdpTag(fields, 4) || {}).items || []).map((item) => sdpInt(fieldsOf(item), 0)),
-  kills: sdpInt(fields, 5),
-  deaths: sdpInt(fields, 6),
-  assists: sdpInt(fields, 7),
-  money: sdpInt(fields, 8),
-  maxKillNoDeath: sdpInt(fields, 9),
-  monsters: sdpInt(fields, 11),
-  heroDamage: sdpInt(fields, 12),
-  towerDamage: sdpInt(fields, 13)
-})
+const decodeRecordDetail = (fields) => {
+  const heroId = sdpInt(fields, 3)
+  return {
+    camp: sdpInt(fields, 1),
+    position: sdpInt(fields, 2),
+    heroId,
+    heroName: heroName(heroId),
+    equipment: ((sdpTag(fields, 4) || {}).items || []).map((item) => sdpInt(fieldsOf(item), 0)),
+    kills: sdpInt(fields, 5),
+    deaths: sdpInt(fields, 6),
+    assists: sdpInt(fields, 7),
+    money: sdpInt(fields, 8),
+    maxKillNoDeath: sdpInt(fields, 9),
+    monsters: sdpInt(fields, 11),
+    heroDamage: sdpInt(fields, 12),
+    towerDamage: sdpInt(fields, 13)
+  }
+}
 
 const decodeBattleRecord = (nodes) =>
   (nodes || []).map((item) => {
     const fields = fieldsOf(item)
+    const pvpType = sdpInt(fields, 4)
     return {
       battleId: sdpBig(fields, 0),
       duration: sdpInt(fields, 1),
       time: sdpInt(fields, 2),
       winCamp: sdpInt(fields, 3),
-      pvpType: sdpInt(fields, 4),
+      pvpType,
+      mode: PVP_MODES[pvpType] || null,
       valid: sdpInt(fields, 6) === 1,
       detail: decodeRecordDetail(fieldsOf(sdpTag(fields, 7)))
     }
@@ -724,6 +790,9 @@ const decodeGameStats = (body, roleId, zoneId) => {
   const baseFields = base && base.fields ? base.fields : []
   const total = sdpInt(fields, 0)
   const wins = sdpInt(fields, 1)
+  const maniac = sdpInt(fields, 8)
+  const savage = sdpInt(fields, 9)
+  const seasonMaxRankId = sdpInt(fields, 24)
   return {
     roleId: sdpInt(fields, 17) || roleId,
     zoneId: sdpInt(fields, 18) || zoneId,
@@ -740,8 +809,10 @@ const decodeGameStats = (body, roleId, zoneId) => {
     kills: {
       double: sdpInt(fields, 6),
       triple: sdpInt(fields, 7),
-      quadra: sdpInt(fields, 8),
-      penta: sdpInt(fields, 9),
+      maniac,
+      savage,
+      quadra: maniac,
+      penta: savage,
       overFive: sdpInt(fields, 10)
     },
     avg: {
@@ -752,7 +823,8 @@ const decodeGameStats = (body, roleId, zoneId) => {
       taken: sdpInt(fields, 15),
       tower: sdpInt(fields, 16)
     },
-    seasonMaxRankId: sdpInt(fields, 24),
+    seasonMaxRankId,
+    seasonMaxRank: rankOf(seasonMaxRankId),
     displayAchieveId: sdpInt(fields, 20),
     beSupport: sdpInt(fields, 25),
     profile: decodePlayerBase(baseFields),
@@ -970,10 +1042,23 @@ export const stalk = (target, options = {}) =>
     } finally {
       if (game) game.close()
     }
+
+    if (result.stats) {
+      const heroIds = [
+        ...(result.stats.heroes || []).map((h) => h.heroId),
+        ...(result.stats.matches || []).map((m) => m.detail?.heroId)
+      ]
+      await ensureHeroNames(heroIds)
+      for (const h of result.stats.heroes || []) h.heroName = heroName(h.heroId)
+      for (const m of result.stats.matches || []) {
+        if (m.detail) m.detail.heroName = heroName(m.detail.heroId)
+      }
+    }
+
     return result
   })
 
-export { GAME_PROTOCOL_AVAILABLE, MlbbError, parseTarget, rankOf }
+export { GAME_PROTOCOL_AVAILABLE, HERO_NAMES, heroName, MlbbError, parseTarget, PVP_MODES, rankOf }
 
 export default {
   guestLogin,
@@ -985,6 +1070,9 @@ export default {
   fullStats,
   stalk,
   rankOf,
+  heroName,
+  HERO_NAMES,
+  PVP_MODES,
   parseTarget,
   GAME_PROTOCOL_AVAILABLE,
   MlbbError
