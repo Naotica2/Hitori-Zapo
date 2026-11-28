@@ -5,15 +5,25 @@
 import config from '../../config.js'
 import { pinSearch } from '../../scraper/PINSEARCH.js'
 import { sendCarousel } from '../../lib/carousel.js'
+import { getQuotedMessage } from '../../lib/media.js'
+import { runPinCommand } from '../group/pin.js'
 
 export default {
   name: 'pinterest',
   aliases: ['pin', 'pinsearch'],
   tags: 'tools',
-  description: 'Mencari gambar dari Pinterest',
+  description: 'Mencari gambar dari Pinterest (atau pin pesan jika reply dengan .pin)',
 
   async run(ctx) {
     const query = (ctx.text || '').trim()
+
+    if (
+      ctx.command === 'pin' &&
+      getQuotedMessage(ctx) &&
+      (!query || /^(24h|24j|1d|1h|7d|7h|1w|30d|30h|1mo|unpin|off|batal)$/i.test(query))
+    ) {
+      return runPinCommand(ctx, { forceMode: /^unpin|off|batal$/i.test(query) ? 'unpin' : 'pinmsg' })
+    }
 
     if (!query) {
       return ctx.reply(

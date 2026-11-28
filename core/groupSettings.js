@@ -41,3 +41,11 @@ export function isOn(groupJid, key) {
 export function setOn(groupJid, key, on) {
   setSetting(groupJid, key, on ? '1' : '0')
 }
+
+export function listEnabledGroups(key) {
+  return db
+    .prepare("SELECT group_jid FROM group_settings WHERE setting_key = ? AND value = '1'")
+    .all(key)
+    .map((r) => r.group_jid)
+    .filter((jid) => typeof jid === 'string' && jid.endsWith('@g.us'))
+}
