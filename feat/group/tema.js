@@ -3,6 +3,7 @@
  * tema.js — Ubah / reset Shared Chat Theme & wallpaper chat/grup (CHAT_THEME_SETTING)
  */
 import { isGroupAdmin } from '../../core/permission.js'
+import { logger } from '../../core/logger.js'
 import {
   downloadTargetBuffer,
   extractTextFromMessage,
@@ -207,6 +208,7 @@ function parseTemaArgs(rawText) {
     doodle: undefined,
     stock: undefined,
     fit: 'cover',
+    upload: 'image',
     url: undefined
   }
 
@@ -216,20 +218,25 @@ function parseTemaArgs(rawText) {
     text = text.replace(urlMatch[0], ' ')
   }
 
-  text = text.replace(/(^|\s)--(scheme|tema|color|solid|dim|stock|fit)(?:=|\s+)(\S+)/gi, (_, lead, k, v) => {
+  text = text.replace(/(^|\s)--(scheme|tema|color|solid|dim|stock|fit|upload)(?:=|\s+)(\S+)/gi, (_, lead, k, v) => {
     const key = k.toLowerCase()
     if (key === 'scheme' || key === 'tema') opts.scheme = v
     else if (key === 'color' || key === 'solid') opts.solid = v
     else if (key === 'dim') opts.dim = v
     else if (key === 'stock') opts.stock = v
     else if (key === 'fit') opts.fit = v.toLowerCase() === 'blur' || v.toLowerCase() === 'full' ? 'blur' : 'cover'
+    else if (key === 'upload') {
+      const u = v.toLowerCase()
+      opts.upload = u === 'wp' || u === 'wallpaper' ? 'wallpaper' : u === 'wpkey' ? 'wpkey' : 'image'
+    }
     return lead
   })
 
-  text = text.replace(/(^|\s)--(no-?doodle|doodle|full|blur|cover)\b/gi, (_, lead, flag) => {
+  text = text.replace(/(^|\s)--(no-?doodle|doodle|full|blur|cover|wp)\b/gi, (_, lead, flag) => {
     const f = flag.toLowerCase()
     if (f === 'full' || f === 'blur') opts.fit = 'blur'
     else if (f === 'cover') opts.fit = 'cover'
+    else if (f === 'wp') opts.upload = 'wallpaper'
     else opts.doodle = !f.startsWith('no')
     return lead
   })
@@ -446,12 +453,25 @@ export default {
       const applied = await setChatTheme(ctx.client, ctx.chat, {
         imageBuffer,
         imageFit: opts.fit,
+        uploadMode: opts.upload,
         colorSchemeId: resolvedScheme,
         isDoodleEnabled: autoDoodle,
         dimLevel: normalizeDimLevel(opts.dim, 0),
         solidColor: resolvedSolid,
         stockImageId: opts.stock
       })
+
+      if (applied.uploadMeta) {
+        logger.info(
+          {
+            chat: ctx.chat,
+            ...applied.uploadMeta,
+            colorSchemeId: resolvedScheme ?? null,
+            stanzaId: applied.result?.id ?? null
+          },
+          '🖼️  [.tema customImage dikirim]'
+        )
+      }
 
       await ctx.react('✅')
 
