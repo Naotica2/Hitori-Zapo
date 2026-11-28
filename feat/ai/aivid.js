@@ -4,12 +4,14 @@
  */
 
 import config from '../../config.js'
+import { logger } from '../../core/logger.js'
 import {
   downloadTargetBuffer,
   downloadUrlBuffer,
   getEvent,
   resolveTargetMedia
 } from '../../lib/media.js'
+import { inspectMp4Layout, normalizeMp4ForWhatsApp } from '../../lib/mediaConverter.js'
 import { assertSafePublicUrl } from '../../lib/security.js'
 import {
   generateVideo,
@@ -128,7 +130,29 @@ export default {
       }
 
       await assertSafePublicUrl(generated.videoUrl)
-      const vidBuf = await downloadUrlBuffer(generated.videoUrl, { timeout: 120_000, maxBytes: MAX_VIDEO_BYTES })
+      const rawVidBuf = await downloadUrlBuffer(generated.videoUrl, {
+        timeout: 180_000,
+        maxBytes: MAX_VIDEO_BYTES
+      })
+
+      const headAscii = rawVidBuf.subarray(0, 64).toString('utf8').trimStart()
+      if (headAscii.startsWith('<') || headAscii.startsWith('{')) {
+        throw new Error('Server CDN tidak mengembalikan file video valid.')
+      }
+
+      let vidBuf = rawVidBuf
+      let sendWithoutSidecar = false
+      const initialLayout = inspectMp4Layout(rawVidBuf)
+
+      try {
+        const normalized = await normalizeMp4ForWhatsApp(rawVidBuf)
+        vidBuf = normalized.buffer
+        sendWithoutSidecar = !normalized.safeForZapoSidecar
+      } catch (normErr) {
+        logger.warn({ err: normErr?.message }, '⚠️ [aivid] Gagal normalisasi MP4 via ffmpeg, pakai buffer asli')
+        sendWithoutSidecar = initialLayout.isMp4 && !initialLayout.safeForZapoSidecar
+      }
+
       const caption = [
         '┌───「 🎬 *AI VIDEO GEN* 」───┐',
         '',
@@ -142,16 +166,41 @@ export default {
         `> ✨ _*Powered by ${config.botName}*_`
       ].join('\n')
 
-      await ctx.client.message.send(
-        ctx.chat,
-        {
+      if (sendWithoutSidecar) {
+        const uploaded = await ctx.client.message.upload(vidBuf, {
           type: 'video',
-          media: vidBuf,
           mimetype: 'video/mp4',
-          caption
-        },
-        sendOpts
-      )
+          sidecar: false
+        })
+        await ctx.client.message.send(
+          ctx.chat,
+          {
+            videoMessage: {
+              url: uploaded.url,
+              directPath: uploaded.directPath,
+              mediaKey: uploaded.mediaKey,
+              fileSha256: uploaded.fileSha256,
+              fileEncSha256: uploaded.fileEncSha256,
+              fileLength: uploaded.fileLength,
+              mediaKeyTimestamp: uploaded.mediaKeyTimestamp,
+              mimetype: 'video/mp4',
+              caption
+            }
+          },
+          sendOpts
+        )
+      } else {
+        await ctx.client.message.send(
+          ctx.chat,
+          {
+            type: 'video',
+            media: vidBuf,
+            mimetype: 'video/mp4',
+            caption
+          },
+          sendOpts
+        )
+      }
       await ctx.react('✅')
     } catch (err) {
       await ctx.react('❎')
