@@ -15,6 +15,41 @@ async function reqJson(url, opts = {}) {
   return res.json()
 }
 
+async function fetchRobloxAvatarUrl(userId) {
+  const fullEndpoint = `https://thumbnails.roblox.com/v1/users/avatar?userIds=${userId}&size=720x720&format=Png&isCircular=false`
+  const headEndpoint = `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=420x420&format=Png&isCircular=false`
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const av = await reqJson(fullEndpoint)
+      const entry = av?.data?.[0]
+      if (entry?.imageUrl && entry.state === 'Completed') {
+        return entry.imageUrl
+      }
+      if (entry?.state === 'Pending' && attempt < 2) {
+        await new Promise((r) => setTimeout(r, 700))
+        continue
+      }
+      if (entry?.imageUrl && !/UnapprovedImage/i.test(entry.imageUrl)) {
+        return entry.imageUrl
+      }
+      break
+    } catch {
+      break
+    }
+  }
+
+  try {
+    const hs = await reqJson(headEndpoint)
+    const entry = hs?.data?.[0]
+    if (entry?.imageUrl && !/UnapprovedImage/i.test(entry.imageUrl)) {
+      return entry.imageUrl
+    }
+  } catch {}
+
+  return null
+}
+
 export async function robloxStalk(usernameOrId) {
   const raw = String(usernameOrId || '').trim().replace(/^@/, '')
   if (!raw) throw new Error('Masukkan username atau User ID Roblox.')
@@ -33,12 +68,12 @@ export async function robloxStalk(usernameOrId) {
     userId = hit.id
   }
 
-  const [profile, friends, followers, followings, avatar, presence, groups] = await Promise.all([
+  const [profile, friends, followers, followings, avatarUrl, presence, groups] = await Promise.all([
     reqJson(`https://users.roblox.com/v1/users/${userId}`),
     reqJson(`https://friends.roblox.com/v1/users/${userId}/friends/count`).catch(() => ({ count: null })),
     reqJson(`https://friends.roblox.com/v1/users/${userId}/followers/count`).catch(() => ({ count: null })),
     reqJson(`https://friends.roblox.com/v1/users/${userId}/followings/count`).catch(() => ({ count: null })),
-    reqJson(`https://thumbnails.roblox.com/v1/users/avatar?userIds=${userId}&size=720x720&format=Png&isCircular=false`).catch(() => null),
+    fetchRobloxAvatarUrl(userId),
     reqJson('https://presence.roblox.com/v1/presence/users', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -68,7 +103,7 @@ export async function robloxStalk(usernameOrId) {
     followingsCount: followings?.count ?? '-',
     presenceStatus: pres ? presMap[pres.userPresenceType] || 'Offline ⚫' : 'Tidak diketahui',
     lastLocation: pres?.lastLocation || '',
-    avatarUrl: avatar?.data?.[0]?.imageUrl || null,
+    avatarUrl,
     groups: (groups?.data || []).slice(0, 5).map((g) => ({
       name: g.group?.name,
       role: g.role?.name

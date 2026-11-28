@@ -26,8 +26,44 @@ function resolveSystemChromePath() {
   return undefined
 }
 
-async function fetchRemoteScreenshotFallback(targetUrl, { mobile = false, fullPage = false } = {}) {
+async function fetchRemoteScreenshotFallback(targetUrl, { mobile = false, fullPage = false, dark = false } = {}) {
   const width = mobile ? 390 : 1280
+
+  // 1. Microlink Screenshot API (dukung mobile viewport, fullPage, dan dark mode tanpa Chromium lokal)
+  try {
+    const mlParams = new URLSearchParams({
+      url: targetUrl,
+      screenshot: 'true',
+      ...(fullPage ? { 'screenshot.fullPage': 'true' } : {}),
+      ...(mobile ? { 'viewport.isMobile': 'true', 'viewport.width': '390', 'viewport.height': '844' } : {}),
+      ...(dark ? { colorScheme: 'dark' } : {})
+    })
+    const mlRes = await fetch(`https://api.microlink.io/?${mlParams.toString()}`, {
+      headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0' },
+      signal: AbortSignal.timeout(25_000)
+    })
+    if (mlRes.ok) {
+      const mlJson = await mlRes.json()
+      const shotUrl = mlJson?.data?.screenshot?.url
+      if (shotUrl) {
+        await assertSafePublicUrl(shotUrl)
+        const imgRes = await fetch(shotUrl, { redirect: 'follow', signal: AbortSignal.timeout(20_000) })
+        const ct = String(imgRes.headers.get('content-type') || '').toLowerCase()
+        if (imgRes.ok && ct.startsWith('image/')) {
+          const buf = Buffer.from(await imgRes.arrayBuffer())
+          if (buf.length > 4000) {
+            return {
+              buffer: buf,
+              mimetype: ct.includes('png') ? 'image/png' : 'image/jpeg',
+              title: mlJson?.data?.title || ''
+            }
+          }
+        }
+      }
+    }
+  } catch {}
+
+  // 2. Fallback thum.io
   const thumUrl = fullPage
     ? `https://image.thum.io/get/width/${width}/fullpage/noanimate/${targetUrl}`
     : `https://image.thum.io/get/width/${width}/crop/900/noanimate/${targetUrl}`
@@ -39,9 +75,15 @@ async function fetchRemoteScreenshotFallback(targetUrl, { mobile = false, fullPa
   const ct = String(res.headers.get('content-type') || '').toLowerCase()
   if (res.ok && ct.startsWith('image/')) {
     const buf = Buffer.from(await res.arrayBuffer())
-    if (buf.length > 5000) return { buffer: buf, mimetype: ct.includes('png') ? 'image/png' : 'image/jpeg' }
+    if (buf.length > 4000) {
+      return {
+        buffer: buf,
+        mimetype: ct.includes('png') ? 'image/png' : 'image/jpeg',
+        title: ''
+      }
+    }
   }
-  throw new Error('Browser Chrome belum terpasang (`npx puppeteer browsers install chrome`) dan fallback screenshot gagal.')
+  throw new Error('Gagal meluncurkan Chrome (missing shared libs/binary) dan fallback screenshot juga gagal.')
 }
 
 const URL_RE = /(?:https?:\/\/)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/[^\s]*)?/i
@@ -130,26 +172,26 @@ export default {
             '--no-first-run'
           ]
         })
-      } catch (launchErr) {
-        if (/Could not find Chrome|executable|ENOENT/i.test(String(launchErr?.message || ''))) {
-          const fallback = await fetchRemoteScreenshotFallback(safeUrl.toString(), { mobile, fullPage })
-          await ctx.client.message.send(
-            ctx.chat,
-            {
-              type: 'image',
-              media: fallback.buffer,
-              mimetype: fallback.mimetype,
-              caption:
-                `🌐 *SCREENSHOT WEB*\n` +
-                `• URL   : ${safeUrl.toString()}\n` +
-                `• Mode  : ${mobile ? 'Mobile' : 'Desktop'}${fullPage ? ' • Fullpage' : ''}`
-            },
-            sendOpts
-          )
-          await ctx.react('✅')
-          return
-        }
-        throw launchErr
+      } catch {
+        // Fallback otomatis saat Chrome gagal launch (mis. belum terpasang atau kurang shared lib libnspr4.so di VPS minimal)
+        const fallback = await fetchRemoteScreenshotFallback(safeUrl.toString(), { mobile, fullPage, dark })
+        await ctx.client.message.send(
+          ctx.chat,
+          {
+            type: 'image',
+            media: fallback.buffer,
+            mimetype: fallback.mimetype,
+            caption: [
+              '🌐 *SCREENSHOT WEB*',
+              ...(fallback.title ? [`• Judul : ${fallback.title.slice(0, 100)}`] : []),
+              `• URL   : ${safeUrl.toString()}`,
+              `• Mode  : ${mobile ? 'Mobile' : 'Desktop'}${fullPage ? ' • Fullpage' : ''}${dark ? ' • Dark' : ''}`
+            ].join('\n')
+          },
+          sendOpts
+        )
+        await ctx.react('✅')
+        return
       }
 
       const page = await browser.newPage()

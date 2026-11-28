@@ -2,10 +2,38 @@
  * © Hitori-MD — WhatsApp Bot on Zapo-JS
  * robloxstalk.js — Cek profil, avatar full-body, statistik & status online akun Roblox
  */
+import sharp from 'sharp'
 import config from '../../config.js'
+import { logger } from '../../core/logger.js'
 import { downloadUrlBuffer, extractTextFromMessage, getEvent, getQuotedMessage } from '../../lib/media.js'
 import { assertSafePublicUrl } from '../../lib/security.js'
 import { robloxStalk } from '../../scraper/ROBLOX.js'
+
+/**
+ * Render avatar PNG transparan Roblox ke atas background studio gradient JPEG 760x760
+ * supaya tampil tajam di WhatsApp (tidak gelap/hilang transparansinya).
+ */
+export async function renderRobloxCharacterJpeg(pngBuffer) {
+  const bgSvg =
+    '<svg width="760" height="760" xmlns="http://www.w3.org/2000/svg">' +
+    '<defs><radialGradient id="g" cx="50%" cy="42%" r="65%">' +
+    '<stop offset="0%" stop-color="#1e293b"/>' +
+    '<stop offset="100%" stop-color="#090d16"/>' +
+    '</radialGradient></defs>' +
+    '<rect width="760" height="760" fill="url(#g)"/>' +
+    '<ellipse cx="380" cy="650" rx="210" ry="50" fill="rgba(56,189,248,0.12)"/>' +
+    '</svg>'
+
+  const avatar = await sharp(pngBuffer)
+    .resize(700, 700, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .png()
+    .toBuffer()
+
+  return sharp(Buffer.from(bgSvg))
+    .composite([{ input: avatar, gravity: 'center' }])
+    .jpeg({ quality: 92 })
+    .toBuffer()
+}
 
 function fmtNum(v) {
   return typeof v === 'number' ? v.toLocaleString('id-ID') : String(v ?? '-')
@@ -85,15 +113,23 @@ export default {
       if (u.avatarUrl) {
         try {
           await assertSafePublicUrl(u.avatarUrl)
-          const imgBuf = await downloadUrlBuffer(u.avatarUrl, { timeout: 15_000, maxBytes: 8 * 1024 * 1024 })
+          const rawImgBuf = await downloadUrlBuffer(u.avatarUrl, { timeout: 20_000, maxBytes: 8 * 1024 * 1024 })
+          let imgBuf = rawImgBuf
+          let mimetype = 'image/png'
+          try {
+            imgBuf = await renderRobloxCharacterJpeg(rawImgBuf)
+            mimetype = 'image/jpeg'
+          } catch {}
           await ctx.client.message.send(
             ctx.chat,
-            { type: 'image', media: imgBuf, mimetype: 'image/png', caption },
+            { type: 'image', media: imgBuf, mimetype, caption },
             sendOpts
           )
           await ctx.react('✅')
           return
-        } catch {}
+        } catch (imgErr) {
+          logger.warn({ err: imgErr?.message, avatarUrl: u.avatarUrl }, '⚠️ [robloxstalk] Gagal kirim avatar Roblox')
+        }
       }
 
       await ctx.client.message.send(ctx.chat, caption, sendOpts)
