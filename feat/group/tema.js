@@ -208,7 +208,7 @@ function parseTemaArgs(rawText) {
     doodle: undefined,
     stock: undefined,
     fit: 'cover',
-    upload: 'image',
+    upload: 'wpkey',
     url: undefined
   }
 

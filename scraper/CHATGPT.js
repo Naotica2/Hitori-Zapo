@@ -344,7 +344,7 @@ const CODE_SPAN_RE = /(```[\s\S]*?```|`[^`\n]+`)/g
 const WIDGET_DSL_RE =
   /<\/?(?:box|row|col|column|grid|grid-item|card|caption|title|subtitle|badge|icon|divider|spacer|markdown|vstack|hstack|stack|list|list-item|AsyncImageGroup|AsyncImage|ImageGroup|ImageCarousel|Carousel|VideoGroup|WeatherCard|StockChart|ProductCard|PlaceCard|EntityCard|MapCard)\b[^>]*>/i
 
-/** Membersihkan tag widget Android ChatGPT (<Cite>, <Link>, <text>, <box>, <grid>, dll) di luar blok kode. */
+/** Membersihkan tag widget Android ChatGPT (<Cite>, <Link>, <text>, <entity>, <box>, <grid>, dll) di luar blok kode. */
 export function cleanAndroidMarkup(text) {
   return String(text || '')
     .split(CODE_SPAN_RE)
@@ -356,6 +356,26 @@ export function cleanAndroidMarkup(text) {
         .replace(/[\uE200-\uE20F]/g, '')
         .replace(/<Cit(?:e|ation|ations)\b[^>]*\/>/gi, '')
         .replace(/<Cit(?:e|ation|ations)\b[^>]*>[\s\S]*?<\/Cit(?:e|ation|ations)>/gi, '')
+        .replace(/<(?:attribution|source|reference|turn_chip)\b[^>]*\/>/gi, '')
+        .replace(/<(?:attribution|source|reference|turn_chip)\b[^>]*>[\s\S]*?<\/(?:attribution|source|reference|turn_chip)>/gi, '')
+        .replace(/<entity\b[^>]*>([\s\S]*?)<\/entity>/gi, '$1')
+        .replace(/<entity\b([^>]*?)\/>/gi, (_, attrs, offset, fullStr) => {
+          const label =
+            attrs.match(/\b(?:title|label|display|name|text|value)=["']([^"']+)["']/i)?.[1]?.trim() || ''
+          if (!label) return ''
+          const before = fullStr
+            .slice(Math.max(0, offset - 96), offset)
+            .replace(/[*_`~>"'()[\],.!?:;]+/g, '')
+            .trim()
+            .toLowerCase()
+          const cleanBefore = before.replace(/[^\p{L}\p{N}]/gu, '')
+          const asciiBefore = cleanBefore.replace(/[^\x00-\x7f]/g, '')
+          const cleanLabel = label.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '')
+          if (cleanLabel && (cleanBefore.endsWith(cleanLabel) || asciiBefore.endsWith(cleanLabel))) {
+            return ''
+          }
+          return label.replace(/[_-]+/g, ' ')
+        })
         .replace(/(?:\brefs=)?\{\s*\[\s*(?:["']turn\d+[^"']*["']\s*,?\s*)+\]\s*\}\s*\/?>?/gi, '')
         .replace(
           /<Link\b([^>]*?)\/>/gi,

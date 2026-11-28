@@ -596,7 +596,11 @@ const decodeSocial = (fields) => ({
 })
 
 export function parseAccountId(raw) {
-  const cleaned = trim(raw).replace(/^#/, '').replace(/^uid\s*:/i, '').trim()
+  const cleaned = trim(raw)
+    .replace(/^#/, '')
+    .replace(/^(?:u?id)\s*(?::|\s+)?/i, '')
+    .replace(/^#/, '')
+    .trim()
   if (!/^\d+$/.test(cleaned)) return null
   const num = Number(cleaned)
   if (!Number.isSafeInteger(num) || num <= 0) return null
@@ -835,12 +839,23 @@ function buildAccountRecord(uid, password, session, meta = {}) {
     token: session.token || null,
     ttl: ttlSec,
     obtainedAt: now,
-    expiresAt: now + ttlSec * 1000
+    expiresAt: now + ttlSec * 1000,
+    autoCreated: Boolean(meta.autoCreated),
+    banned: false
   }
 }
 
 function isTokenFresh(record) {
-  return Boolean(record?.token && record?.serverUrl && Number(record?.expiresAt || 0) - TOKEN_REFRESH_MARGIN_MS > Date.now())
+  return Boolean(
+    !record?.banned &&
+      record?.token &&
+      record?.serverUrl &&
+      Number(record?.expiresAt || 0) - TOKEN_REFRESH_MARGIN_MS > Date.now()
+  )
+}
+
+function isPermanentAccountError(err) {
+  return /Exploiting loopholes|Protection Bypass|token grant failed|unauthorized/i.test(String(err?.message || ''))
 }
 
 function toSessionObject(record) {
@@ -878,6 +893,8 @@ export function listWorkerAccounts(filePath = getSessionStorePath()) {
       cluster: acc.cluster || 'UNKNOWN',
       serverUrl: acc.serverUrl || null,
       active: String(acc.uid) === String(store.activeUid),
+      autoCreated: Boolean(acc.autoCreated),
+      banned: Boolean(acc.banned),
       tokenValid: isTokenFresh(acc),
       expiresAt: acc.expiresAt || 0
     }))
@@ -917,7 +934,8 @@ async function loginAndCacheAccount(account, filePath = getSessionStorePath()) {
     }
     const updated = buildAccountRecord(account.uid, account.password, session, {
       nickname: account.nickname,
-      region: account.region
+      region: account.region,
+      autoCreated: account.autoCreated
     })
     upsertAccountRecord(updated, { setActive: false }, filePath)
     return updated
@@ -926,6 +944,21 @@ async function loginAndCacheAccount(account, filePath = getSessionStorePath()) {
   })
   loginInFlight.set(key, task)
   return task
+}
+
+function markWorkerBanned(uid, filePath = getSessionStorePath()) {
+  const store = readStore(filePath)
+  const key = String(uid)
+  const target = store.accounts.find((a) => String(a.uid) === key)
+  if (!target) return
+  if (target.autoCreated) {
+    removeWorkerAccount(key, filePath)
+    return
+  }
+  target.banned = true
+  target.token = null
+  target.expiresAt = 0
+  saveStore(store, filePath)
 }
 
 export async function addWorkerAccount(uid, password, { setActive = true } = {}, filePath = getSessionStorePath()) {
@@ -938,50 +971,69 @@ export async function addWorkerAccount(uid, password, { setActive = true } = {},
   if (!session.serverUrl) {
     throw new Error('Akun berhasil login, tetapi belum memiliki serverUrl (belum masuk game/terikat region).')
   }
-  const record = buildAccountRecord(cleanUid, cleanPassword, session)
+  const record = buildAccountRecord(cleanUid, cleanPassword, session, { autoCreated: false })
   upsertAccountRecord(record, { setActive }, filePath)
   return record
 }
 
-export async function createWorkerAccount({ nickname, region = 'ID', setActive = true } = {}, filePath = getSessionStorePath()) {
+export async function createWorkerAccount({ nickname, region = 'ID', setActive = true, autoCreated = false } = {}, filePath = getSessionStorePath()) {
   const created = await createAccount({ nickname, region })
   if (!created?.session?.serverUrl) {
     throw new Error('Akun berhasil dibuat, namun serverUrl kosong.')
   }
   const record = buildAccountRecord(created.uid, created.password, created.session, {
     nickname: created.nickname,
-    region: created.region
+    region: created.region,
+    autoCreated
   })
   upsertAccountRecord(record, { setActive }, filePath)
   return { ...record, session: created.session }
 }
 
+async function bootstrapAutoWorker(region = 'ID', filePath = getSessionStorePath()) {
+  if (!bootstrapInFlight) {
+    bootstrapInFlight = createWorkerAccount({ region, setActive: true, autoCreated: true }, filePath).finally(() => {
+      bootstrapInFlight = null
+    })
+  }
+  return bootstrapInFlight
+}
+
 async function ensureActiveWorkerSession({ forceRefresh = false, autoBootstrap = true } = {}, filePath = getSessionStorePath()) {
   const store = readStore(filePath)
-  let account =
-    store.accounts.find((a) => String(a.uid) === String(store.activeUid)) ||
-    store.accounts[0] ||
-    null
+  const active = store.accounts.find((a) => String(a.uid) === String(store.activeUid)) || null
+  const candidates = [
+    ...(active ? [active] : []),
+    ...store.accounts.filter((a) => String(a.uid) !== String(active?.uid) && !a.banned)
+  ]
 
-  if (!account) {
-    if (!autoBootstrap) {
-      throw new Error('Belum ada akun worker Free Fire tersimpan. Owner bisa setup lewat .ffcreate atau .fflogin.')
+  let lastErr = null
+  for (const acc of candidates) {
+    if (!forceRefresh && isTokenFresh(acc)) {
+      return toSessionObject(acc)
     }
-    if (!bootstrapInFlight) {
-      bootstrapInFlight = createWorkerAccount({ region: 'ID', setActive: true }, filePath).finally(() => {
-        bootstrapInFlight = null
-      })
+    try {
+      const refreshed = await loginAndCacheAccount(acc, filePath)
+      if (String(refreshed.uid) !== String(store.activeUid)) {
+        upsertAccountRecord(refreshed, { setActive: true }, filePath)
+      }
+      return toSessionObject(refreshed)
+    } catch (err) {
+      lastErr = err
+      if (isPermanentAccountError(err)) {
+        markWorkerBanned(acc.uid, filePath)
+        continue
+      }
+      throw err
     }
-    const created = await bootstrapInFlight
-    return toSessionObject(created)
   }
 
-  if (!forceRefresh && isTokenFresh(account)) {
-    return toSessionObject(account)
+  if (!autoBootstrap) {
+    throw lastErr || new Error('Belum ada akun worker Free Fire tersimpan. Owner bisa setup lewat .ffcreate atau .fflogin.')
   }
 
-  const refreshed = await loginAndCacheAccount(account, filePath)
-  return toSessionObject(refreshed)
+  const created = await bootstrapAutoWorker('ID', filePath)
+  return toSessionObject(created)
 }
 
 async function withWorkerRetry(fn, filePath = getSessionStorePath()) {
@@ -1006,7 +1058,19 @@ export async function refreshActiveWorker(filePath = getSessionStorePath()) {
   if (!account) {
     throw new Error('Belum ada akun worker Free Fire tersimpan.')
   }
-  return loginAndCacheAccount(account, filePath)
+  try {
+    return await loginAndCacheAccount(account, filePath)
+  } catch (err) {
+    if (account.autoCreated && isPermanentAccountError(err)) {
+      removeWorkerAccount(account.uid, filePath)
+      const replacement = await bootstrapAutoWorker(account.region || 'ID', filePath)
+      return { ...replacement, rotated: true }
+    }
+    if (isPermanentAccountError(err)) {
+      markWorkerBanned(account.uid, filePath)
+    }
+    throw err
+  }
 }
 
 export async function searchPlayers(keyword, filePath = getSessionStorePath()) {

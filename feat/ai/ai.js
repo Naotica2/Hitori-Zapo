@@ -9,6 +9,7 @@ import { LANGS, parseMarkdown } from '../../lib/highlight.js'
 import { extractTextFromMessage, getQuotedMessage } from '../../lib/media.js'
 import { extractTargetMediaInput, analyzePdf, transcribeAudio } from '../../lib/aiMultimodal.js'
 import { runToolAgent } from '../../lib/aiAgent.js'
+import { cleanAndroidMarkup } from '../../scraper/CHATGPT.js'
 import {
   assertSafePublicUrl,
   isSensitiveRepoPath,
@@ -693,7 +694,15 @@ export default {
         return ctx.reply('⚠️ Provider AI mengembalikan respons kosong. Coba ulang sekali lagi ya, Kak 🙏')
       }
 
-      const safeReplyText = redactSecrets(result.text)
+      const rawReply = String(result.text || '')
+      const cleanedReply = /^\s*(?:<!doctype\s+html|<html[\s>])/i.test(rawReply)
+        ? rawReply
+        : cleanAndroidMarkup(rawReply)
+      const safeReplyText = redactSecrets(cleanedReply)
+      if (!safeReplyText.trim()) {
+        await ctx.react('❎')
+        return ctx.reply('⚠️ Provider AI mengembalikan respons kosong. Coba ulang sekali lagi ya, Kak 🙏')
+      }
       const memUserLabel =
         (quotedText && query ? `[Reply: ${quotedText.slice(0, 140)}] ${query}` : query) ||
         (media?.kind === 'audio'
@@ -773,7 +782,7 @@ export default {
       }
 
       if (contentCount === 0) {
-        for (const c of chunkText(result.text.trim(), MAX_TEXT).slice(0, 6)) {
+        for (const c of chunkText(safeReplyText.trim(), MAX_TEXT).slice(0, 6)) {
           submessages.push(subText(c))
         }
       }

@@ -193,7 +193,11 @@ async function sendSearchResult(ctx, keyword, sendOpts) {
     lines.push(`   UID: \`${r.accountId}\` • Lv.${r.level ?? '-'}${r.region ? ` • ${r.region}` : ''}`)
   })
 
-  lines.push('', `> Tap tombol daftar di bawah atau ketik *${config.mainPrefix}ffstalk <uid>*`)
+  lines.push(
+    '',
+    `> Tap tombol daftar di bawah atau ketik *${config.mainPrefix}ffstalk <uid>*`,
+    '> _Info: pencarian nickname bisa menampilkan akun lama/kloningan bernama mirip. Pakai UID angka agar tepat sasaran._'
+  )
   const textBody = lines.join('\n')
 
   try {
@@ -325,11 +329,14 @@ export default {
       const uid = parseAccountId(rawInput)
       if (uid) {
         await sendStalkResult(ctx, uid, sendOpts)
-      } else if (rawInput.length >= 3) {
-        await sendSearchResult(ctx, rawInput, sendOpts)
       } else {
-        await ctx.react('❎')
-        await ctx.client.message.send(ctx.chat, buildUsageText(ctx), sendOpts)
+        const searchTerm = rawInput.replace(/^(?:u?id)\s*(?::|\s+)/i, '').trim()
+        if (searchTerm.length >= 3) {
+          await sendSearchResult(ctx, searchTerm, sendOpts)
+        } else {
+          await ctx.react('❎')
+          await ctx.client.message.send(ctx.chat, buildUsageText(ctx), sendOpts)
+        }
       }
     } catch (err) {
       await ctx.react('❎')

@@ -51,8 +51,13 @@ function formatAccountList(p) {
   const lines = [`🔥 *WORKER FREE FIRE (${accounts.length} akun)*`, '']
   accounts.forEach((acc, i) => {
     const flag = acc.active ? '✅ [AKTIF]' : '⚪'
-    const tokenInfo = acc.tokenValid ? `aktif (${formatExpiry(acc.expiresAt)})` : 'perlu refresh'
-    lines.push(`${i + 1}. ${flag} UID \`${acc.uid}\` ${acc.nickname ? `• *${acc.nickname}*` : ''}`)
+    const kind = acc.autoCreated ? 'auto' : 'manual'
+    const tokenInfo = acc.banned
+      ? '🚫 dibatasi Garena'
+      : acc.tokenValid
+        ? `aktif (${formatExpiry(acc.expiresAt)})`
+        : 'perlu refresh'
+    lines.push(`${i + 1}. ${flag} UID \`${acc.uid}\` (${kind})${acc.nickname ? ` • *${acc.nickname}*` : ''}`)
     lines.push(`   Region: ${acc.region} (${acc.cluster}) • ID Game: \`${acc.accountId || '-'}\``)
     lines.push(`   Token : ${tokenInfo}`)
   })
@@ -198,11 +203,10 @@ export default {
       if (sub === 'refresh') {
         const rec = await refreshActiveWorker()
         await ctx.react('✅')
-        return ctx.client.message.send(
-          ctx.chat,
-          `🔄 Token worker UID \`${rec.uid}\` diperbarui (${formatExpiry(rec.expiresAt)}).`,
-          sendOpts
-        )
+        const msg = rec.rotated
+          ? `🔄 Worker auto lama dibatasi Garena, otomatis diganti ke UID \`${rec.uid}\` (${formatExpiry(rec.expiresAt)}).`
+          : `🔄 Token worker UID \`${rec.uid}\` diperbarui (${formatExpiry(rec.expiresAt)}).`
+        return ctx.client.message.send(ctx.chat, msg, sendOpts)
       }
 
       await ctx.react('❎')
